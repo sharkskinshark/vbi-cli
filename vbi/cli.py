@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .audit import has_critical, render_findings, run_audit
@@ -37,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("doctor", help="inspect local readiness")
-    subparsers.add_parser("init", help="initialize VBI-owned local config")
+    subparsers.add_parser("init", help="(not yet implemented) initialize VBI-owned local config")
 
     sync_parser = subparsers.add_parser("sync", help="refresh stale or missing provider records")
     sync_parser.add_argument("--provider", default="all", help="provider record_id or 'all'")
@@ -94,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("audit", help="run release safety audit")
-    subparsers.add_parser("export", help="export sanitized report")
+    subparsers.add_parser("export", help="(not yet implemented) export sanitized report")
 
     update_parser = subparsers.add_parser(
         "update",
@@ -174,6 +175,12 @@ def _run_sync(force: bool, provider: str) -> int:
 
 
 def main() -> int:
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
     parser = build_parser()
     args = parser.parse_args()
     if not args.command:
@@ -205,7 +212,7 @@ def main() -> int:
     if args.command == "update":
         return run_update(check_only=args.check)
 
-    print(f"vbi {args.command}: release skeleton only")
+    print(f"vbi {args.command}: not yet implemented in this release")
     return 0
 
 

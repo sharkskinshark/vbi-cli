@@ -6,7 +6,7 @@
 ║ AUTO:                                                                ║
 ║   • Session count today / this month                                 ║
 ║   • API response count today (type=="gemini" messages — proxy)       ║
-║   • Day reset (next local midnight) — POLICY only, not real reset    ║
+║   • Day reset (next PT midnight) — POLICY only, not real reset       ║
 ║                                                                      ║
 ║ NOT AVAILABLE LOCALLY (and we will NOT invent it):                   ║
 ║   • Token counts          — Gemini CLI does not log them             ║
@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from vbi.cache import read_cache_record, write_cache_record
 from vbi.contracts import (
@@ -40,14 +41,18 @@ from vbi.contracts import (
 
 GEMINI_TMP_ROOT = Path.home() / ".gemini" / "tmp"
 
+# Google's Gemini API daily quota resets at midnight Pacific Time
+# (PST/PDT — handled automatically by zoneinfo).
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
-def _next_midnight_utc() -> str:
-    """ISO string of the next UTC midnight."""
-    now = datetime.now(timezone.utc)
-    next_midnight = (now + timedelta(days=1)).replace(
+
+def _next_quota_reset_iso() -> str:
+    """ISO string (UTC) of the next Gemini quota reset = PT midnight."""
+    now_pt = datetime.now(PACIFIC_TZ)
+    next_midnight_pt = (now_pt + timedelta(days=1)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
-    return next_midnight.isoformat(timespec="seconds")
+    return next_midnight_pt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
 def _scan_sessions(root: Path) -> tuple[int, int, int, str | None]:
@@ -188,7 +193,7 @@ class GeminiCliAdapter:
             period="today" if responses_today > 0 else "monthly",
             session_count=sessions_today if sessions_today > 0 else None,
             policy_reset="daily",
-            estimated_reset_at=_next_midnight_utc(),
+            estimated_reset_at=_next_quota_reset_iso(),
             notes="no token/quota data — Gemini CLI doesn't log it locally",
             evidence_source="session_json",
         )

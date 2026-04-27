@@ -20,6 +20,18 @@ from .inventory.render import _format_cost_cell, _format_status_cell, _render_ta
 MIN_INTERVAL_SECONDS = 5
 
 
+def _format_countdown(seconds: float) -> str:
+    s = max(0, int(seconds))
+    d, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    m, _ = divmod(s, 60)
+    if d:
+        return f"{d}d {h:02d}h {m:02d}m"
+    if h:
+        return f"{h}h {m:02d}m"
+    return f"{m}m"
+
+
 def _format_reset_cell(cached: NormalizedRecord) -> str:
     reset_time = cached.observed_reset_at or cached.estimated_reset_at
     cadence = cached.policy_reset or ""
@@ -28,6 +40,11 @@ def _format_reset_cell(cached: NormalizedRecord) -> str:
             dt = datetime.fromisoformat(reset_time.replace("Z", "+00:00"))
             local_dt = dt.astimezone()
             time_str = local_dt.strftime("%m/%d %H:%M")
+            remaining = (dt - datetime.now(timezone.utc)).total_seconds()
+            if remaining > 0:
+                time_str = f"{time_str} ({_format_countdown(remaining)} left)"
+            else:
+                time_str = f"{time_str} (stale — run 'vbi sync')"
         except ValueError:
             time_str = reset_time[:16]
         return f"{cadence} -> {time_str}" if cadence else time_str
