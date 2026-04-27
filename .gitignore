@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Local secrets and config
+.env
+*.env
+oauth_creds.json
+config.yaml
+vbi.entitlements.yaml
+
+# Runtime data
+public/live_usage.json
+runtime-output/
+*.sqlite
+*.sqlite3
+*.db
+*.jsonl
+
+# Local tool state
+.claude/
+.gcloud/
+.google-mcp/
