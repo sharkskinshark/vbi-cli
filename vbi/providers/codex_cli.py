@@ -326,10 +326,16 @@ class CodexCliAdapter:
                 exp_dt = datetime.fromisoformat(sub_until.replace("Z", "+00:00"))
                 days_left = (exp_dt - datetime.now(exp_dt.tzinfo)).days
                 exp_local = exp_dt.astimezone().strftime("%Y-%m-%d")
-                if days_left <= 30:
-                    notes_parts.append(f"subscription expires {exp_local} ({days_left}d)")
+                if days_left < 0:
+                    # JWT past — auto-renewing plans (Plus/Pro) likely renewed
+                    # already; the local id_token just hasn't refreshed yet.
+                    notes_parts.append(
+                        f"auth from {exp_local} ({-days_left}d old) — re-run codex to refresh"
+                    )
+                elif days_left <= 30:
+                    notes_parts.append(f"plan active until {exp_local} ({days_left}d)")
                 else:
-                    notes_parts.append(f"subscription until {exp_local}")
+                    notes_parts.append(f"plan active until {exp_local}")
             except ValueError:
                 pass
 
