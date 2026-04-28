@@ -1,6 +1,6 @@
 # vbi-cli
 
-Local-first terminal dashboard for AI tool usage. Reads on-disk telemetry that the AI CLIs already write — no credentials read, no network calls.
+Local-first terminal dashboard for AI tool usage. Reads on-disk telemetry that the AI CLIs already write — no credentials read, no provider API calls.
 
 ## Install
 
@@ -20,7 +20,7 @@ vbi live --interval 30
 
 Sample frame:
 
-```
+```text
  CLAUDE CODE  ·  Claude Pro  ·  5h
  ──────────────────────────────────────────────────────────────
  Tokens                                  2.1M tokens
@@ -34,7 +34,7 @@ Sample frame:
 ## Supported providers
 
 | Provider | What's shown | Trigger required |
-|---|---|---|
+| --- | --- | --- |
 | **Antigravity** (Google AI Pro/Ultra) | Plan, AI credits, monthly subscription requests, hourly rate-limit, Month reset | None — extension auto-writes SQLite + cloudcode.log |
 | **Claude Code** | Tokens today, cost (estimated), sessions, hourly spark, 5h + Week reset | 5h/Week reset bars require running `/usage` inside Claude Code |
 | **Codex CLI** (ChatGPT Plus/Pro) | Context tokens vs window, plan, subscription expiry, 5h + Week reset, quota % | None — every API call writes `rate_limits` to session JSONL |
@@ -49,7 +49,7 @@ Each adapter has a strict, documented contract about what's auto vs. trigger-req
 - Read-only on local files only
 - No credential files are opened (`.credentials.json`, `oauth_creds.json`, `auth.json` JWT body is decoded only for plan/expiry — signing key is not used)
 - No transcript content, no message bodies, no prompts
-- No network calls
+- No provider API calls during telemetry collection (`vbi update` and the startup update hint may run `git fetch`)
 - Cache lives at `~/.vbi/cache/` (user-scoped, never committed)
 
 ## Adding a provider
@@ -63,6 +63,6 @@ vbi inventory              # discover installed AI tooling (Tier 1 registry)
 vbi inventory --heuristics # plus generic discovery via PATH/npm/pipx/registry
 vbi dashboard              # cache-only dashboard (doesn't sync)
 vbi sync                   # refresh cache for all providers
-vbi status                 # show cached records
+vbi status                 # show cached records only (no sync)
 vbi audit                  # release safety scan
 ```

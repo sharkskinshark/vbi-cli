@@ -7,8 +7,7 @@ read. No subprocess invocation here.
 
 Tools that require reading credential payloads, OAuth files, or secret-bearing
 manifests (Office WEF add-in manifests, Revit addin XML, browser session
-stores) are intentionally out of scope until safe rules land. See the
-"Deferred Detection" section of docs/INVENTORY_CONTRACT.md.
+stores) are intentionally out of scope until safe rules land.
 """
 
 from __future__ import annotations
@@ -820,7 +819,7 @@ DESCRIPTORS: tuple[Descriptor, ...] = (
     ),
 
     # AEC tools (Grasshopper, RhinoCode, Revit-MCP, etc.) are intentionally
-    # excluded; see docs/OUT_OF_SCOPE.md.
+    # excluded until safe detection rules are documented.
 )
 
 

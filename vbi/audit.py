@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import fnmatch
+import os
 from pathlib import Path
 import re
 
@@ -15,8 +17,12 @@ SKIP_DIRS = {
     "venv",
     "dist",
     "build",
-    "*.egg-info",
 }
+
+SKIP_DIR_PATTERNS = (
+    "*.egg-info",
+    "pytest-cache-files-*",
+)
 
 RUNTIME_ARTIFACT_NAMES = {
     "live_usage.json",
@@ -68,7 +74,13 @@ class Finding:
 
 def _is_skipped(path: Path, root: Path) -> bool:
     rel_parts = path.relative_to(root).parts
-    return any(part in SKIP_DIRS for part in rel_parts)
+    return any(_is_skipped_dir_name(part) for part in rel_parts)
+
+
+def _is_skipped_dir_name(name: str) -> bool:
+    return name in SKIP_DIRS or any(
+        fnmatch.fnmatch(name, pattern) for pattern in SKIP_DIR_PATTERNS
+    )
 
 
 def _is_text_candidate(path: Path) -> bool:
@@ -108,12 +120,16 @@ def _scan_text(path: Path, root: Path) -> list[Finding]:
 def run_audit(root: Path) -> list[Finding]:
     root = root.resolve()
     findings: list[Finding] = []
-    for path in root.rglob("*"):
-        if path.is_dir() or _is_skipped(path, root):
-            continue
-        findings.extend(_scan_artifact(path, root))
-        if _is_text_candidate(path):
-            findings.extend(_scan_text(path, root))
+    for current, dirs, files in os.walk(root):
+        dirs[:] = [name for name in dirs if not _is_skipped_dir_name(name)]
+        current_path = Path(current)
+        for name in files:
+            path = current_path / name
+            if _is_skipped(path, root):
+                continue
+            findings.extend(_scan_artifact(path, root))
+            if _is_text_candidate(path):
+                findings.extend(_scan_text(path, root))
     return findings
 
 

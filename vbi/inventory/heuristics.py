@@ -1,8 +1,8 @@
 """Tier 2: heuristic discovery surfaces. Read-only, allowlist-bounded.
 
-See docs/INVENTORY_CONTRACT.md. Each surface declares its matched fields and
-evidence format. Surfaces backed by external commands enforce timeouts and
-skip silently on absence or non-zero exit.
+Each surface declares its matched fields and evidence format. Surfaces backed
+by external commands enforce timeouts and skip silently on absence or non-zero
+exit.
 """
 
 from __future__ import annotations

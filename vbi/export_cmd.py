@@ -1,7 +1,7 @@
 """Export a sanitized JSON report combining inventory, cached usage and audit.
 
-Read-only. No network. Default output is ``./vbi-report-YYYYMMDD.json`` in the
-current working directory; ``--output PATH`` overrides this. Any local path
+Read-only. No network. Default output is ``~/vbi-report-YYYYMMDD.json`` in the
+user's home directory; ``--output PATH`` overrides this. Any local path
 that includes the running user's home directory (or any other user-home-style
 path on Win/Mac/Linux) is replaced with ``~`` so the file is safe to share.
 """

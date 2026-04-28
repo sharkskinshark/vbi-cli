@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument("--provider", default="all", help="provider record_id or 'all'")
     sync_parser.add_argument("--force", action="store_true", help="refresh even when cache is fresh")
 
-    status_parser = subparsers.add_parser("status", help="show current cached/degraded provider status")
+    status_parser = subparsers.add_parser("status", help="show cached provider status without syncing")
     status_parser.add_argument("--json", action="store_true", help="reserved for future JSON output")
 
     inventory_parser = subparsers.add_parser(
@@ -154,14 +154,9 @@ def _run_doctor() -> int:
 def _run_status() -> int:
     print("record_id | source_type | confidence | status")
     for adapter in get_adapters():
-        cached = adapter.read_cache()
-        if cached is None:
-            result = adapter.sync(force=False)
-            record = result.record
-        else:
-            record = cached
+        record = adapter.read_cache()
         if record is None:
-            print(f"{adapter.record_id} | unavailable | unknown | no record")
+            print(f"{adapter.record_id} | unavailable | unknown | no cached record")
         else:
             print(f"{record.record_id} | {record.source_type} | {record.confidence} | {record.blocked_reason or 'ok'}")
     return 0
@@ -263,5 +258,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 

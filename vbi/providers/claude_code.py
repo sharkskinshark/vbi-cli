@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -50,8 +49,10 @@ OUTPUT_PRICE_PER_TOKEN = 15.0 / 1_000_000  # Sonnet 4 approximate; not authorita
 _USAGE_TRIGGER_HINT = "run /usage in Claude Code to populate 5h/Week reset"
 
 
-def _today_start_utc() -> float:
-    return (int(time.time()) // 86400) * 86400
+def _today_start_local_timestamp() -> float:
+    local_tz = datetime.now().astimezone().tzinfo
+    start = datetime.now(local_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.timestamp()
 
 
 _5H_RESET_RE = re.compile(
@@ -115,7 +116,7 @@ def _parse_usage_resets_from_jsonl() -> tuple[str | None, str | None]:
                                         tzinfo=local_tz,
                                     )
                                     if r < now:
-                                        r = r.replace(day=now.day + 1)
+                                        r += timedelta(days=1)
                                     reset_5h = r.astimezone(timezone.utc).isoformat(timespec="seconds")
                                     block_has_5h = True
                                 except ValueError:
@@ -245,7 +246,7 @@ def _scan_today() -> tuple[int, int, int, int, float, tuple[float, ...]] | None:
     """
     if not PROJECTS_ROOT.is_dir():
         return None
-    cutoff = _today_start_utc()
+    cutoff = _today_start_local_timestamp()
     local_tz = datetime.now().astimezone().tzinfo
     total = 0
     output = 0
@@ -432,7 +433,7 @@ class ClaudeCodeAdapter:
             cost_currency="USD",
             cost_period="today",
             hourly_usage=hourly,
-            notes=overage_note,
+            notes=notes,
             evidence_source="local_telemetry+output_token_rate",
         )
         write_cache_record(record)
