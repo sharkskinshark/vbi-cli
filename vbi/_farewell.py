@@ -15,6 +15,7 @@ Behaviour:
 """
 from __future__ import annotations
 
+import difflib
 import os
 import subprocess
 import sys
@@ -30,6 +31,16 @@ _RST    = "\033[0m"
 _SEP    = "─" * 65
 
 _EXIT_WORDS = {"exit", "quit", "q"}
+
+# Known top-level vbi sub-commands (mirrors cli.COMMANDS plus --help).
+# Used by the home prompt to catch typos and suggest fixes BEFORE shelling
+# out, so the user gets `unknown command: 'dasboard' — did you mean
+# 'dashboard'?` instead of argparse's full usage dump.
+_KNOWN_COMMANDS = (
+    "doctor", "init", "sync", "status", "inventory",
+    "dashboard", "live", "audit", "export", "update", "map",
+    "--help", "-h",
+)
 
 
 def _home_view() -> str:
@@ -73,11 +84,31 @@ def _home_view() -> str:
 
 def _run_subcommand(cmd_text: str) -> None:
     """Spawn `python -m vbi <args>` so the typed command runs with the user's
-    own Ctrl+C handling and we resume cleanly when it ends."""
+    own Ctrl+C handling and we resume cleanly when it ends. Unknown commands
+    are caught here with a suggestion instead of leaking argparse's usage
+    dump back to the prompt."""
+    parts = cmd_text.split()
+    if not parts:
+        return
+    head = parts[0].lower()
+
+    if head not in _KNOWN_COMMANDS:
+        suggestion = difflib.get_close_matches(head, _KNOWN_COMMANDS, n=1, cutoff=0.6)
+        if suggestion:
+            print(
+                f"  \033[91munknown command:\033[0m '{head}' — did you mean "
+                f"'{_ORANGE}{suggestion[0]}{_RST}'?"
+            )
+        else:
+            print(
+                f"  \033[91munknown command:\033[0m '{head}'. "
+                f"Type {_ORANGE}--help{_RST} for the full list."
+            )
+        return
+
     try:
-        subprocess.run([sys.executable, "-m", "vbi"] + cmd_text.split())
+        subprocess.run([sys.executable, "-m", "vbi"] + parts)
     except KeyboardInterrupt:
-        # User Ctrl+C'd the spawned command; just resume the prompt.
         pass
 
 
