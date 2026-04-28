@@ -184,7 +184,14 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     if not args.command:
-        parser.print_help()
+        # No subcommand → land directly on the interactive home view.
+        # Same view the install script jumps to and that `vbi live` /
+        # `vbi dashboard` show on Ctrl+C, so the entry experience is unified.
+        from ._farewell import CtrlCExit
+        try:
+            CtrlCExit().handle_interrupt()
+        except KeyboardInterrupt:
+            pass
         return 0
 
     if args.command == "audit":

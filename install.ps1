@@ -4,62 +4,30 @@
 #   .\install.ps1                           # install to %USERPROFILE%\vbi-cli
 #   .\install.ps1 -Target C:\tools\vbi-cli  # custom location
 #   .\install.ps1 -Source <path-or-url>     # custom source (default: this repo)
-#   .\install.ps1 -NoLaunch                 # skip post-install dashboard
+#
+# UX flow:
+#   1. Big "VBI CLI" banner (gradient).
+#   2. Tagline + version + Python check (static info).
+#   3. ONE skyline row that grows char-by-char during install.
+#      Each install step (clone → venv → pip → verify) corresponds to 25%
+#      of the skyline; chars paint while that step's background job runs.
+#   4. Once the skyline is full, the just-installed `vbi` is launched directly
+#      into its interactive home view (mini banner + quick-start menu + REPL),
+#      so the user lands on the same view they'd see by typing `vbi` later.
 
 [CmdletBinding()]
 param(
     [string]$Target = "$env:USERPROFILE\vbi-cli",
     [string]$Source = (Split-Path -Parent $MyInvocation.MyCommand.Path),
-    [switch]$NoLaunch
+    [switch]$NoLaunch  # accepted but unused; kept for backward compat
 )
 
 $ErrorActionPreference = "Stop"
 $ESC = [char]27
 $RST = "$ESC[0m"
 
-# ── Architecture animation (skyline rising under the banner) ─────────────────
-# An 18-column skyline that fills in column by column then resets to empty.
-# Rendered on a fixed terminal row (anchored when we print the placeholder)
-# and updated inside the Invoke-Step spinner loop, so it animates throughout
-# the entire install — clone → venv → pip install → verify.
-$script:VBISkyline = "▂▅▃▆▂▇▄█▃▆▂▅▃▆▄█▂▇"
-$script:VBIBuildingFrames = @()
-for ($i = 0; $i -le $script:VBISkyline.Length; $i++) {
-    $built = if ($i -gt 0) { $script:VBISkyline.Substring(0, $i) } else { "" }
-    $empty = "░" * ($script:VBISkyline.Length - $i)
-    $script:VBIBuildingFrames += "$built$empty"
-}
-$script:VBIBuildingRow   = $null  # absolute row number; set when placeholder printed
-$script:VBIBuildingFrame = 0
-
-function Write-BuildingFrame {
-    if ($null -eq $script:VBIBuildingRow) { return }
-    $frame = $script:VBIBuildingFrames[$script:VBIBuildingFrame % $script:VBIBuildingFrames.Count]
-    try {
-        $savedTop  = [Console]::CursorTop
-        $savedLeft = [Console]::CursorLeft
-        [Console]::SetCursorPosition(0, $script:VBIBuildingRow)
-        Write-Host -NoNewline "      $ESC[38;5;215m$frame$RST$ESC[K"
-        [Console]::SetCursorPosition($savedLeft, $savedTop)
-    } catch {
-        # Terminal does not support cursor positioning (non-interactive host);
-        # disable subsequent frame updates rather than spam errors.
-        $script:VBIBuildingRow = $null
-    }
-    $script:VBIBuildingFrame++
-}
-
-function Set-BuildingFinal {
-    if ($null -eq $script:VBIBuildingRow) { return }
-    $finalFrame = $script:VBIBuildingFrames[$script:VBIBuildingFrames.Count - 1]
-    try {
-        $savedTop  = [Console]::CursorTop
-        $savedLeft = [Console]::CursorLeft
-        [Console]::SetCursorPosition(0, $script:VBIBuildingRow)
-        Write-Host -NoNewline "      $ESC[38;5;215m$finalFrame$RST$ESC[K"
-        [Console]::SetCursorPosition($savedLeft, $savedTop)
-    } catch {}
-}
+# Skyline is the single animated progress indicator during install.
+$script:VBISkyline = "▂▅▃▆▂▇▄█▃▆▂▅▃▆▄█▂▇▆▄█▂▇▃▆▂▅▃▆▂▇▄█▃▆▂▅▆▄█▂▇▃▆▂"
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -81,31 +49,71 @@ function Write-Gradient {
     }
 }
 
-function Invoke-Step {
-    param([string]$Label, [scriptblock]$Action)
-    $spinner = @('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
-    $i = 0
-    Write-Host -NoNewline "  [ ] $Label"
+# Run a sequence of install steps and animate ONE skyline row that paints
+# char-by-char as each step makes progress. Returns $null on success, or a
+# hashtable @{ Label=...; Output=... } describing the failed step.
+#
+# How the pacing works:
+#   - The skyline string is split into N equal slices (one per step).
+#   - Each step starts as a Start-Job background task. While the job is
+#     running, the foreground prints chars from this step's slice at a
+#     steady pace. When the job ends, any unpainted chars from this step's
+#     slice are flushed instantly (so the skyline is always at-least-N% by
+#     the time step N finishes), then we move to the next step.
+#   - The whole loop is pure append-only: every char is a fresh
+#     `Write-Host -NoNewline` to the same logical line. No `\r`, no cursor
+#     positioning, so the layout cannot collapse the way earlier versions
+#     did in some terminal hosts.
+function Invoke-AnimatedInstall {
+    param([array]$Steps)
 
-    $job = Start-Job -ScriptBlock $Action
-    while ($job.State -eq 'Running') {
-        $frame = $spinner[$i % $spinner.Count]
-        Write-Host -NoNewline "`r  $ESC[93m[$frame]$RST $Label..."
-        Write-BuildingFrame
-        Start-Sleep -Milliseconds 80
-        $i++
+    Write-Host -NoNewline "  "  # leading spaces, cursor stays on this row
+    $chars      = $script:VBISkyline.ToCharArray()
+    $totalChars = $chars.Count
+    $charIdx    = 0
+    $tickMs     = 100  # how fast skyline chars paint when a job is mid-run
+
+    for ($n = 0; $n -lt $Steps.Count; $n++) {
+        $step      = $Steps[$n]
+        $job       = Start-Job -ScriptBlock $step.Action
+        $targetIdx = [int]([math]::Round($totalChars * (($n + 1) / $Steps.Count)))
+
+        while ($job.State -eq 'Running') {
+            if ($charIdx -lt $targetIdx) {
+                Write-Host -NoNewline "$ESC[38;5;215m$($chars[$charIdx])$RST"
+                $charIdx++
+                Start-Sleep -Milliseconds $tickMs
+            } else {
+                # Already painted this step's slice; just wait for the job.
+                Start-Sleep -Milliseconds 200
+            }
+        }
+
+        $output     = Receive-Job $job 2>&1
+        $stepFailed = ($job.State -eq 'Failed')
+        Remove-Job $job -Force
+
+        if ($stepFailed) {
+            # Pad the rest of the skyline with empty plots so the row closes
+            # cleanly even though we're aborting.
+            if ($charIdx -lt $totalChars) {
+                $remaining = "░" * ($totalChars - $charIdx)
+                Write-Host "$ESC[2m$remaining$RST"
+            } else {
+                Write-Host ""
+            }
+            return @{ Label = $step.Label; Output = $output }
+        }
+
+        # Step succeeded — flush any unpainted chars from this slice now.
+        while ($charIdx -lt $targetIdx) {
+            Write-Host -NoNewline "$ESC[38;5;215m$($chars[$charIdx])$RST"
+            $charIdx++
+        }
     }
 
-    $output = Receive-Job $job 2>&1
-    $failed = $job.State -eq 'Failed'
-    Remove-Job $job -Force
-
-    if ($failed) {
-        Write-Host "`r  $ESC[91m[!]$RST $Label                                                  "
-        Write-Host $output -ForegroundColor Red
-        throw "Step failed: $Label"
-    }
-    Write-Host "`r  $ESC[32m[✓]$RST $Label                                                  "
+    Write-Host ""  # close the skyline row
+    return $null
 }
 
 # ── banner ──────────────────────────────────────────────────────────────────
@@ -122,17 +130,11 @@ $banner = @(
 try { Clear-Host } catch { Write-Host "" }
 Write-Gradient -Lines $banner
 
-# Anchor the architecture-animation row directly under the banner so it sits
-# in a fixed position throughout the install. We print an empty placeholder
-# now and remember its row for in-place updates.
-try { $script:VBIBuildingRow = [Console]::CursorTop } catch { $script:VBIBuildingRow = $null }
-Write-Host "      $ESC[38;5;215m$($script:VBIBuildingFrames[0])$RST"
-
 Write-Host "$ESC[2m       Local-first AI usage inspection$RST"
 Write-Host "$ESC[2;3m       CLUSTER&Associates  Architecture Design$RST"
 Write-Host "$ESC[2;3m            Visual Budget Inspection$RST"
 
-# Read version from pyproject.toml so install banner stays in sync with package
+# Read version from pyproject.toml so the banner stays in sync.
 $pyprojectPath = Join-Path $Source "pyproject.toml"
 $VBIVersion = "0.0.0"
 if (Test-Path $pyprojectPath) {
@@ -156,24 +158,10 @@ try {
 $_PS7_URL = "https://github.com/PowerShell/PowerShell/releases/download/v$_PS7_VERSION/PowerShell-$_PS7_VERSION-win-x64.msi"
 
 if ($PSVersionTable.PSVersion -lt $_PS7_MIN) {
-    Write-Host "  $ESC[93m[i]$RST PowerShell $($PSVersionTable.PSVersion) detected — upgrading to $_PS7_VERSION"
-    Write-Host ""
-
-    $tmpMsi = Join-Path $env:TEMP "PowerShell-$_PS7_VERSION-win-x64.msi"
-
-    Invoke-Step "download PowerShell $_PS7_VERSION" {
-        Invoke-WebRequest -Uri $using:_PS7_URL -OutFile $using:tmpMsi -UseBasicParsing
-    }
-
-    Invoke-Step "install PowerShell $_PS7_VERSION (silent)" {
-        Start-Process msiexec.exe -ArgumentList "/i `"$using:tmpMsi`" /quiet /norestart ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1" -Wait -PassThru | Out-Null
-    }
-
-    Write-Host ""
-    Write-Host "  $ESC[32mPowerShell $_PS7_VERSION installed.$RST"
-    Write-Host "  $ESC[2mPlease re-launch this script in a new pwsh.exe window to continue.$RST"
-    Write-Host ""
-    exit 0
+    Write-Host "  $ESC[93m[i]$RST PowerShell $($PSVersionTable.PSVersion) detected — please install PowerShell $_PS7_VERSION from:"
+    Write-Host "      $_PS7_URL"
+    Write-Host "  $ESC[2mthen re-run this script.$RST"
+    exit 1
 }
 
 # ── preflight: Python 3.10+ ─────────────────────────────────────────────────
@@ -194,51 +182,64 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "  $ESC[2mPython:$RST  $(& $pyCmd --version)"
-Write-Host "  $ESC[2mSource:$RST  $Source"
-Write-Host "  $ESC[2mTarget:$RST  $Target"
 Write-Host ""
 
-# ── install steps ───────────────────────────────────────────────────────────
+# ── install: animated skyline + 4 background steps ──────────────────────────
 
 if (Test-Path $Target) {
-    Write-Host "  $ESC[93m[i]$RST $Target exists — removing"
+    $tgtLeaf = Split-Path -Leaf $Target
+    Write-Host "  $ESC[93m[i]$RST removing existing $tgtLeaf"
     Remove-Item -Recurse -Force $Target
-}
-
-Invoke-Step "clone vbi-cli" {
-    git clone $using:Source $using:Target 2>&1 | Out-Null
-}
-
-Invoke-Step "create Python venv" {
-    & $using:pyCmd -m venv "$using:Target\.venv" 2>&1 | Out-Null
-}
-
-Invoke-Step "install dependencies (rich, pyyaml, pyfiglet)" {
-    & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -e $using:Target 2>&1 | Out-Null
-}
-
-Invoke-Step "verify vbi command" {
-    if (-not (Test-Path "$using:Target\.venv\Scripts\vbi.exe")) {
-        throw "vbi.exe not found in venv"
-    }
-}
-
-Set-BuildingFinal  # leave the skyline complete after the last step
-Write-Host ""
-Write-Host "  $ESC[32mInstalled successfully.$RST"
-Write-Host ""
-Write-Host "  $ESC[2mTo use vbi from anywhere:$RST"
-Write-Host "    & '$Target\.venv\Scripts\vbi.exe' live"
-Write-Host ""
-Write-Host "  $ESC[2mOr add the venv to PATH:$RST"
-Write-Host "    `$env:PATH = '$Target\.venv\Scripts;' + `$env:PATH"
-Write-Host ""
-
-# ── optional: launch first dashboard ────────────────────────────────────────
-
-if (-not $NoLaunch) {
-    Write-Host "  $ESC[38;5;208mLaunching vbi live --once...$RST"
     Write-Host ""
-    Start-Sleep -Milliseconds 600
-    & "$Target\.venv\Scripts\vbi.exe" live --once
 }
+
+$steps = @(
+    @{
+        Label  = "clone"
+        Action = {
+            git clone $using:Source $using:Target 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "git clone exited with code $LASTEXITCODE" }
+        }
+    },
+    @{
+        Label  = "create Python venv"
+        Action = {
+            & $using:pyCmd -m venv "$using:Target\.venv" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "python -m venv exited with code $LASTEXITCODE" }
+        }
+    },
+    @{
+        Label  = "install dependencies"
+        Action = {
+            & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -e $using:Target 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "pip install exited with code $LASTEXITCODE" }
+        }
+    },
+    @{
+        Label  = "verify vbi command"
+        Action = {
+            if (-not (Test-Path "$using:Target\.venv\Scripts\vbi.exe")) {
+                throw "vbi.exe not found in venv"
+            }
+        }
+    }
+)
+
+$failure = Invoke-AnimatedInstall -Steps $steps
+
+if ($null -ne $failure) {
+    Write-Host ""
+    Write-Host "  $ESC[91m✗$RST install failed at: $($failure.Label)" -ForegroundColor Red
+    Write-Host $failure.Output -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+
+# ── launch vbi REPL ─────────────────────────────────────────────────────────
+# Hand off to the just-installed `vbi`. With no subcommand it lands directly
+# on the interactive home view (mini banner + quick-start menu + `vbi> `
+# prompt), which is the same view the user would see if they typed `vbi`
+# from any shell later.
+
+& "$Target\.venv\Scripts\vbi.exe"

@@ -12,6 +12,7 @@ import os
 import time
 from datetime import datetime, timezone
 
+from ._farewell import CtrlCExit
 from .contracts import NormalizedRecord
 from .inventory import fetch_cached_status, run_inventory
 from .inventory.render import _format_cost_cell, _format_status_cell, _render_table
@@ -108,11 +109,14 @@ def run_dashboard(interval: int, once: bool) -> int:
     if once:
         print(_render_dashboard_frame())
         return 0
-    try:
-        while True:
-            _clear_screen()
-            print(_render_dashboard_frame())
-            print(f"\n(refreshing every {refresh}s, Ctrl+C to exit)")
+    exit_handler = CtrlCExit()
+    idle_footer = f"\n(refreshing every {refresh}s, Ctrl+C to exit)"
+    while True:
+        _clear_screen()
+        print(_render_dashboard_frame())
+        print(exit_handler.footer(idle_footer))
+        try:
             time.sleep(refresh)
-    except KeyboardInterrupt:
-        return 0
+        except KeyboardInterrupt:
+            if exit_handler.handle_interrupt():
+                return 0

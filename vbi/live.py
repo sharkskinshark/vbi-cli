@@ -16,6 +16,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from ._farewell import CtrlCExit
 from .contracts import NormalizedRecord
 from .registry import get_adapters
 from .splash import splash_sync
@@ -298,11 +299,13 @@ def run_live(interval: int, once: bool) -> int:
         sys.stdout.write(frame + "\n")
         sys.stdout.flush()
 
-    try:
-        while True:
-            print(f"  (refreshing every {refresh}s  Ctrl+C to exit)")
+    exit_handler = CtrlCExit()
+    idle_footer = f"  (refreshing every {refresh}s  Ctrl+C to exit)"
+    while True:
+        print(exit_handler.footer(idle_footer))
+        try:
             time.sleep(refresh)
-            _tick()
-    except KeyboardInterrupt:
-        pass
-    return 0
+        except KeyboardInterrupt:
+            if exit_handler.handle_interrupt():
+                return 0
+        _tick()
