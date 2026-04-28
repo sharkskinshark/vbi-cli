@@ -99,12 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_parser = subparsers.add_parser(
         "export",
-        help="write a sanitized JSON report (inventory + cached usage + audit) to ./vbi-report-YYYYMMDD.json",
+        help="write a sanitized JSON report (inventory + cached usage + audit) to ~/vbi-report-YYYYMMDD.json",
     )
     export_parser.add_argument(
         "--output",
         default=None,
-        help="override the output path (default: ./vbi-report-YYYYMMDD.json in cwd)",
+        help="override the output path (default: ~/vbi-report-YYYYMMDD.json)",
     )
 
     update_parser = subparsers.add_parser(

@@ -20,6 +20,18 @@ from .inventory.mcp_utils import iter_claude_ai_hosted_mcp, iter_mcp_server_name
 from .inventory.records import InventoryRecord
 
 
+# record_ids of CLIs that act as AI coding agents (TUI-based, edit code,
+# run commands). These get their own group in the map output so they
+# don't sit next to generic platform CLIs (gh / gcloud / bq / vercel).
+_AGENT_CLI_IDS: frozenset[str] = frozenset({
+    "claude-code-cli",
+    "codex-cli",
+    "gemini-cli",
+    "opencode",
+    "aider",
+})
+
+
 def _host_from_mcp_path(path: Path) -> str | None:
     """Map an MCP config file path to the host record_id it configures."""
     s = str(path).replace("\\", "/").lower()
@@ -105,9 +117,19 @@ def render_tree() -> None:
             for mcp in sorted(mcp_by_host.get(r.record_id, set())):
                 node.add(f"[#cc6699]mcp  ·  {mcp}[/#cc6699]")
 
-    if clis:
+    agents = [r for r in clis if r.record_id in _AGENT_CLI_IDS]
+    other_clis = [r for r in clis if r.record_id not in _AGENT_CLI_IDS]
+
+    if agents:
+        agent_branch = root.add("[bold #00b894]AI Coding Agents[/bold #00b894]")
+        for r in agents:
+            node = agent_branch.add(f"[#00b894]{r.display_name}[/#00b894]  [dim]{r.record_id}[/dim]")
+            for mcp in sorted(mcp_by_host.get(r.record_id, set())):
+                node.add(f"[#cc6699]mcp  ·  {mcp}[/#cc6699]")
+
+    if other_clis:
         cli_branch = root.add("[bold #1a8cff]Terminal CLIs[/bold #1a8cff]")
-        for r in clis:
+        for r in other_clis:
             node = cli_branch.add(f"[#1a8cff]{r.display_name}[/#1a8cff]  [dim]{r.record_id}[/dim]")
             for mcp in sorted(mcp_by_host.get(r.record_id, set())):
                 node.add(f"[#cc6699]mcp  ·  {mcp}[/#cc6699]")
@@ -144,10 +166,18 @@ def render_mermaid() -> str:
             out.append(f'    {_slug(r.record_id)}["{r.display_name}"]:::host')
         out.append("")
 
-    # Standalone CLIs (rendered as stadium-shape nodes for visual contrast)
-    if clis:
-        out.append("    %% Terminal CLIs")
-        for r in clis:
+    agents = [r for r in clis if r.record_id in _AGENT_CLI_IDS]
+    other_clis = [r for r in clis if r.record_id not in _AGENT_CLI_IDS]
+
+    if agents:
+        out.append("    %% AI coding agents (TUI-based)")
+        for r in agents:
+            out.append(f'    {_slug(r.record_id)}(["{r.display_name}"]):::agent')
+        out.append("")
+
+    if other_clis:
+        out.append("    %% Terminal CLIs (generic platform tools)")
+        for r in other_clis:
             out.append(f'    {_slug(r.record_id)}(["{r.display_name}"]):::cli')
         out.append("")
 
@@ -179,10 +209,11 @@ def render_mermaid() -> str:
             out.append(f'    cloud --> {node}(("{s}")):::cloudmcp')
         out.append("")
 
-    out.append("    classDef host fill:#fff5e6,stroke:#ff8c1a,stroke-width:2px;")
-    out.append("    classDef cli  fill:#e6f3ff,stroke:#1a8cff,stroke-width:2px;")
-    out.append("    classDef ext  fill:#f0f0f0,stroke:#888;")
-    out.append("    classDef mcp  fill:#fef0f5,stroke:#cc6699;")
+    out.append("    classDef host  fill:#fff5e6,stroke:#ff8c1a,stroke-width:2px;")
+    out.append("    classDef agent fill:#e6f7f1,stroke:#00b894,stroke-width:2px;")
+    out.append("    classDef cli   fill:#e6f3ff,stroke:#1a8cff,stroke-width:2px;")
+    out.append("    classDef ext   fill:#f0f0f0,stroke:#888;")
+    out.append("    classDef mcp   fill:#fef0f5,stroke:#cc6699;")
     out.append("    classDef cloud fill:#e6efff,stroke:#6699ff,stroke-width:2px;")
     out.append("    classDef cloudmcp fill:#f5f9ff,stroke:#6699ff;")
 
@@ -208,6 +239,7 @@ def render_html(mermaid: str) -> str:
 <p class="sub">Host-first hierarchy of detected AI tools on this machine.</p>
 <div class="legend">
   <span style="background:#fff5e6;color:#000">IDE / Desktop</span>
+  <span style="background:#e6f7f1;color:#000">AI Coding Agent</span>
   <span style="background:#e6f3ff;color:#000">Terminal CLI</span>
   <span style="background:#f0f0f0;color:#000">VS Code extension</span>
   <span style="background:#fef0f5;color:#000">MCP server</span>
@@ -246,9 +278,17 @@ def run_map(mermaid: bool = False, html: bool = False, output: str | None = None
                         node.add(f"ext  ·  {ext.display_name}")
                     for mcp in sorted(mcp_by_host.get(r.record_id, set())):
                         node.add(f"mcp  ·  {mcp}")
-            if clis:
+            agents = [r for r in clis if r.record_id in _AGENT_CLI_IDS]
+            other_clis = [r for r in clis if r.record_id not in _AGENT_CLI_IDS]
+            if agents:
+                agent_branch = tree_root.add("AI Coding Agents")
+                for r in agents:
+                    node = agent_branch.add(f"{r.display_name}  ({r.record_id})")
+                    for mcp in sorted(mcp_by_host.get(r.record_id, set())):
+                        node.add(f"mcp  ·  {mcp}")
+            if other_clis:
                 cli_branch = tree_root.add("Terminal CLIs")
-                for r in clis:
+                for r in other_clis:
                     node = cli_branch.add(f"{r.display_name}  ({r.record_id})")
                     for mcp in sorted(mcp_by_host.get(r.record_id, set())):
                         node.add(f"mcp  ·  {mcp}")

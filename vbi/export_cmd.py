@@ -93,8 +93,11 @@ def run_export(output: str | None = None) -> int:
     if output:
         path = Path(output).expanduser().resolve()
     else:
+        # Default to the user's home directory (not cwd) so the report
+        # always lands in a stable, easy-to-find location regardless of
+        # where vbi was invoked from. Override with --output PATH.
         date = datetime.now().strftime("%Y%m%d")
-        path = Path.cwd() / f"vbi-report-{date}.json"
+        path = Path.home() / f"vbi-report-{date}.json"
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
