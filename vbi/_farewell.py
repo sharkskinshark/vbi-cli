@@ -282,6 +282,13 @@ class CtrlCExit:
                 home_is_fresh = True
                 warned = False
                 _safe_redraw(armed=False)
+                # CRITICAL: drain queued signals from the subcommand's
+                # Ctrl+C broadcast. Without this, the next input() at
+                # the home prompt fires the queued KbI immediately,
+                # advances `warned` to True on the first user keypress,
+                # and exits on the next — looking exactly like "home
+                # Ctrl+C directly exits with no warning".
+                _drain_pending_kbi()
             # else: output stays on screen; home_is_fresh remains False.
 
     @staticmethod
