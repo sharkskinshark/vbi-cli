@@ -57,10 +57,9 @@ def _home_view() -> str:
     )
     return (
         "\n"
-        f"  {_AMBER}▟═{_RST}    {_BOLD}VBI CLI{_RST}  {_DIM}v{_version()}{_RST}\n"
-        f"  {_AMBER}╤╥{_RST}    {tagline}\n"
-        f"  {_AMBER}▒▒{_RST}    {_DIM}Read-only · no credentials · no network{_RST}\n"
-        f"  {_AMBER}▲█{_RST}\n"
+        f"  {_BOLD}VBI CLI{_RST}  {_DIM}v{_version()}{_RST}\n"
+        f"  {tagline}\n"
+        f"  {_DIM}Read-only · no credentials · no network{_RST}\n"
         "\n"
         f"  {_DIM}{_SEP}{_RST}\n"
         f"    {_ORANGE}live{_RST}       {_DIM}real-time bar chart, syncs each refresh{_RST}\n"
