@@ -202,40 +202,48 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     if not args.command:
-        # No subcommand → land directly on the interactive home view.
-        # Same view the install script jumps to and that `vbi live` /
-        # `vbi dashboard` show on Ctrl+C, so the entry experience is unified.
+        from .splash import splash_sync
         from ._farewell import CtrlCExit
+        try:
+            splash_sync()
+        except KeyboardInterrupt:
+            pass  # Ctrl+C during splash → skip to home, do not exit
         try:
             CtrlCExit().handle_interrupt()
         except KeyboardInterrupt:
             pass
         return 0
 
-    if args.command == "audit":
-        root = Path(__file__).resolve().parent.parent
-        findings = run_audit(root)
-        print(render_findings(findings))
-        return 4 if has_critical(findings) else 0
-    if args.command == "doctor":
-        return _run_doctor()
-    if args.command == "status":
-        return _run_status()
-    if args.command == "sync":
-        return _run_sync(force=args.force, provider=args.provider)
-    if args.command == "inventory":
-        tier1, tier2 = run_inventory(include_heuristics=args.heuristics)
-        status_map = fetch_cached_status(tier1) if args.with_status else None
-        print(render_inventory(tier1, tier2, status_map))
-        return 0
-    if args.command == "dashboard":
-        return run_dashboard(interval=args.interval, once=args.once)
-    if args.command == "live":
-        return run_live(interval=args.interval, once=args.once)
-    if args.command == "map":
-        return run_map(mermaid=args.mermaid, html=args.html, output=args.output)
-    if args.command == "update":
-        return run_update(check_only=args.check)
+    try:
+        if args.command == "audit":
+            root = Path(__file__).resolve().parent.parent
+            findings = run_audit(root)
+            print(render_findings(findings))
+            return 4 if has_critical(findings) else 0
+        if args.command == "doctor":
+            return _run_doctor()
+        if args.command == "status":
+            return _run_status()
+        if args.command == "sync":
+            return _run_sync(force=args.force, provider=args.provider)
+        if args.command == "inventory":
+            tier1, tier2 = run_inventory(include_heuristics=args.heuristics)
+            status_map = fetch_cached_status(tier1) if args.with_status else None
+            print(render_inventory(tier1, tier2, status_map))
+            return 0
+        if args.command == "dashboard":
+            return run_dashboard(interval=args.interval, once=args.once)
+        if args.command == "live":
+            return run_live(interval=args.interval, once=args.once)
+        if args.command == "map":
+            return run_map(mermaid=args.mermaid, html=args.html, output=args.output)
+        if args.command == "update":
+            return run_update(check_only=args.check)
+    except KeyboardInterrupt:
+        # Child process interrupted — exit with 130 (Ctrl+C convention) so
+        # the parent home REPL can detect this as an interrupt and arm its
+        # double-tap exit window.
+        return 130
 
     print(f"vbi {args.command}: not yet implemented in this release")
     return 0

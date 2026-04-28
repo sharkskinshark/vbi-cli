@@ -4,14 +4,15 @@ Behaviour:
   • Inside `vbi live` / `vbi dashboard`, one Ctrl+C ends the sub-mode and
     drops you onto the home view — same mini-banner + quick-start menu
     shown after install — followed by an interactive `vbi> ` prompt.
-  • At the prompt: type a vbi sub-command (e.g. `live`, `dashboard`, `map`,
-    `sync`, `--help`) and it runs as `python -m vbi <args>`. When that
-    sub-command returns, you land back on the same prompt.
-  • Press Ctrl+C — or type `exit` / `quit` / `q` — to fully exit vbi back
-    to your shell. (We used to require Ctrl+C twice, but on Windows the
-    timing of the warning print racing against the next ``input()`` call
-    made the behaviour unreliable; a single tap is simpler and works
-    consistently across hosts.)
+  • Every sub-command typed at the prompt (`live`, `dashboard`, `map`,
+    `sync`, `--help`, …) runs as `python -m vbi <args>`. When it
+    finishes the output stays on screen so you can read it; a fresh
+    `vbi> ` prompt appears immediately below. Press Ctrl+C when you're
+    done reading to clear the screen and re-show the home view.
+  • Pressing Ctrl+C at the prompt re-grounds the user: 1st tap clears
+    the screen and reprints the home view; a 2nd tap within ~2 s exits
+    vbi back to the shell. Typing `exit` / `quit` / `q` (or Ctrl+D)
+    exits immediately.
 """
 from __future__ import annotations
 
@@ -27,10 +28,23 @@ _AMBER  = "\033[38;5;215m"
 _ORANGE = "\033[38;5;208m"
 _DIM    = "\033[2m"
 _BOLD   = "\033[1m"
+_YELLOW = "\033[93m"
 _RST    = "\033[0m"
 _SEP    = "─" * 65
 
+# Farewell shown when the user presses Ctrl+C twice in the home prompt to
+# fully exit vbi. Mirrors the start-up banner's warm orange→gold gradient
+# so the start and the end of a session bookend visually.
+_FAREWELL_SKYLINE  = "▂▅▃▆▂▇▄█▃▆▂▅▃▆"
+_FAREWELL_TAGLINE  = "Inspector signing off — local data stays local."
+_FAREWELL_FULLNAME = "Visual Budget Inspection"
+
 _EXIT_WORDS = {"exit", "quit", "q"}
+
+# Commands that own the full terminal while running (clear-screen loop).
+# After they exit we always re-show the home view so the user isn't left
+# staring at the last rendered frame.
+_FULLSCREEN_CMDS = {"live", "dashboard"}
 
 # Known top-level vbi sub-commands (mirrors cli.COMMANDS plus --help).
 # Used by the home prompt to catch typos and suggest fixes BEFORE shelling
@@ -82,14 +96,44 @@ def _home_view() -> str:
     )
 
 
-def _run_subcommand(cmd_text: str) -> None:
+def _print_farewell() -> None:
+    """Goodbye easter-egg shown when the user actually leaves vbi.
+
+    Mini skyline + tagline, both in the warm orange→gold gradient that
+    matches the start-up `VBI CLI` banner. On non-TTYs (piped output,
+    redirects) we fall back to plain text.
+    """
+    use_color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    if not use_color:
+        print()
+        print(f"  {_FAREWELL_SKYLINE}")
+        print(f"  {_FAREWELL_TAGLINE}")
+        print(f"  {_FAREWELL_FULLNAME}")
+        print()
+        return
+    sky_line  = _gradient_line(_FAREWELL_SKYLINE,  len(_FAREWELL_SKYLINE),  _GRADIENT_L, _GRADIENT_R)
+    text_line = _gradient_line(_FAREWELL_TAGLINE,  len(_FAREWELL_TAGLINE),  _GRADIENT_L, _GRADIENT_R)
+    name_line = _gradient_line(_FAREWELL_FULLNAME, len(_FAREWELL_FULLNAME), _GRADIENT_L, _GRADIENT_R)
+    print()
+    print(f"  {sky_line}")
+    print(f"  {text_line}")
+    print(f"  {name_line}")
+    print()
+
+
+def _run_subcommand(cmd_text: str) -> bool:
     """Spawn `python -m vbi <args>` so the typed command runs with the user's
     own Ctrl+C handling and we resume cleanly when it ends. Unknown commands
     are caught here with a suggestion instead of leaking argparse's usage
-    dump back to the prompt."""
+    dump back to the prompt.
+
+    Returns True if Ctrl+C was caught during subprocess execution — the
+    caller uses this to arm the double-tap exit window so a follow-up
+    Ctrl+C at the next prompt fires immediately.
+    """
     parts = cmd_text.split()
     if not parts:
-        return
+        return False
     head = parts[0].lower()
 
     if head not in _KNOWN_COMMANDS:
@@ -104,12 +148,29 @@ def _run_subcommand(cmd_text: str) -> None:
                 f"  \033[91munknown command:\033[0m '{head}'. "
                 f"Type {_ORANGE}--help{_RST} for the full list."
             )
-        return
+        return False
 
-    try:
-        subprocess.run([sys.executable, "-m", "vbi"] + parts)
-    except KeyboardInterrupt:
-        pass
+    # Use Popen + explicit wait so KeyboardInterrupt is reliably caught even
+    # when the child exits a split-second before the parent's signal fires.
+    # On Windows, CTRL_C_EVENT is broadcast to *every* process in the console
+    # group, so the parent receives KbI alongside the child — sometimes more
+    # than once. We drain repeats by looping the wait until the child is done.
+    proc = subprocess.Popen([sys.executable, "-m", "vbi"] + parts)
+    interrupted = False
+    while True:
+        try:
+            proc.wait()
+            break
+        except KeyboardInterrupt:
+            interrupted = True
+            # Loop again: child may already have exited, or may still be
+            # cleaning up. Either way, keep waiting and swallow extra signals.
+            continue
+    # Exit code 130 is the POSIX/Windows convention for Ctrl+C termination;
+    # vbi commands that propagate KbI out of cli.main() return this.
+    if proc.returncode == 130:
+        interrupted = True
+    return interrupted
 
 
 class CtrlCExit:
@@ -119,28 +180,104 @@ class CtrlCExit:
         return idle_text
 
     def handle_interrupt(self) -> bool:
-        """Print home view + run an interactive prompt until the user exits.
+        """Print home view + run interactive prompt with two-tap exit.
 
-        A single Ctrl+C (or `exit` / `quit` / `q`, or Ctrl+D) terminates
-        the loop and signals the calling sub-mode to ``return 0``.
+        Robustness note: on Windows CTRL_C_EVENT is delivered to every
+        process in the console group, so the parent (this REPL) can receive
+        KbI alongside its child subprocess — sometimes redelivered. We
+        therefore wrap every redraw / branch in ``_safe_redraw`` so a queued
+        signal can never escape this handler and silently exit vbi.
         """
-        print(_home_view())
-        print(
-            f"  {_DIM}type a command (live, dashboard, map, sync, --help)"
-            f" or Ctrl+C to exit vbi{_RST}"
-        )
         prompt = f"  {_ORANGE}vbi>{_RST} "
+        # home_is_fresh : True  = home view is on screen right now
+        #                 False = command output is on screen
+        # warned        : True  = warning already shown; next Ctrl+C exits
+        home_is_fresh = False
+        warned = False
+
+        def _safe_redraw(armed: bool) -> None:
+            """Redraw the home view, absorbing any queued KbIs that fire
+            during the redraw itself. Without this, a stray second Ctrl+C
+            (delivered after the user's first one for the live/dashboard
+            child) could fire mid-redraw and propagate up, exiting vbi."""
+            while True:
+                try:
+                    self._show_home_fresh(armed=armed)
+                    return
+                except KeyboardInterrupt:
+                    continue
+
+        _safe_redraw(armed=False)
+        home_is_fresh = True
+
         while True:
             try:
                 cmd = input(prompt).strip()
-            except (KeyboardInterrupt, EOFError):
-                print()  # newline so the shell prompt sits on a clean row
+            except KeyboardInterrupt:
+                if home_is_fresh:
+                    if warned:
+                        # 2nd Ctrl+C at home → farewell + exit.
+                        _print_farewell()
+                        return True
+                    # 1st Ctrl+C at home → show warning.
+                    warned = True
+                    _safe_redraw(armed=True)
+                else:
+                    # Ctrl+C while command output is on screen → clean home.
+                    home_is_fresh = True
+                    warned = False
+                    _safe_redraw(armed=False)
+                continue
+            except EOFError:
+                _print_farewell()
                 return True
 
             if not cmd:
                 continue
             if cmd.lower() in _EXIT_WORDS:
+                _print_farewell()
                 return True
 
-            _run_subcommand(cmd)
-            # After the spawned command finishes, fall through and re-prompt.
+            # A real command resets the warning state.
+            home_is_fresh = False
+            warned = False
+            fullscreen = cmd.split()[0].lower() in _FULLSCREEN_CMDS
+            try:
+                interrupted = _run_subcommand(cmd)
+            except KeyboardInterrupt:
+                interrupted = True
+
+            if interrupted or fullscreen:
+                home_is_fresh = True
+                warned = False
+                _safe_redraw(armed=False)
+            # else: output stays on screen; home_is_fresh remains False.
+
+    @staticmethod
+    def _show_home_fresh(armed: bool = False) -> None:
+        """Clear the visible terminal area and reprint the home view.
+
+        Belt-and-braces: emit the ANSI clear-screen + cursor-home escape
+        AND fall back to ``cls``/``clear``. Some hosts (notably xterm.js
+        in nested contexts) ignore one but honour the other.
+
+        If ``armed`` is True (1st Ctrl+C just landed and we're inside the
+        2-second double-tap window) the footer flips to a yellow warning
+        prompting the user to confirm exit.
+        """
+        # ANSI clear-screen + cursor-home. Do NOT use os.system("cls") here:
+        # on Windows it spawns cmd.exe which can re-deliver CTRL_C_EVENT to
+        # the parent Python process, causing a second KeyboardInterrupt that
+        # escapes the handler and exits vbi silently.
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
+        print(_home_view())
+        if armed:
+            print(
+                f"  {_YELLOW}⚠ press Ctrl+C again to exit vbi{_RST}"
+            )
+        else:
+            print(
+                f"  {_DIM}type a command (live, dashboard, map, sync, --help)"
+                f"  ·  Ctrl+C twice to exit, or type 'exit'{_RST}"
+            )

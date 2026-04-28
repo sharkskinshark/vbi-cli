@@ -12,7 +12,6 @@ import os
 import time
 from datetime import datetime, timezone
 
-from ._farewell import CtrlCExit
 from .contracts import NormalizedRecord
 from .inventory import fetch_cached_status, run_inventory
 from .inventory.render import _humanize_number
@@ -148,14 +147,16 @@ def run_dashboard(interval: int, once: bool) -> int:
     if once:
         print(_render_dashboard_frame())
         return 0
-    exit_handler = CtrlCExit()
+    # Ctrl+C inside `vbi dashboard` exits cleanly. The home REPL (when
+    # this runs as a subprocess of `vbi`) catches the interrupt itself
+    # and arms the double-tap goodbye; nesting another REPL here racing
+    # against the parent's stdin teardown was causing EOFError crashes.
     idle_footer = f"\n(refreshing every {refresh}s, Ctrl+C to exit)"
     while True:
         _clear_screen()
         print(_render_dashboard_frame())
-        print(exit_handler.footer(idle_footer))
+        print(idle_footer)
         try:
             time.sleep(refresh)
         except KeyboardInterrupt:
-            if exit_handler.handle_interrupt():
-                return 0
+            return 130

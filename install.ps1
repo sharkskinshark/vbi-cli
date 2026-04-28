@@ -6,18 +6,23 @@
 #   .\install.ps1 -Source <path-or-url>     # custom source (default: this repo)
 #
 # UX flow:
-#   1. Big "VBI CLI" banner (gradient).
-#   2. Static skyline row directly under banner — printed full at start.
+#   1. Banner (gradient).
+#   2. Skyline row directly under banner — paints char-by-char as the four
+#      install steps complete (each step ≈ 25% of the row).
 #   3. Taglines, version, Python info — visible immediately.
-#   4. 4 install steps, each on its own line:
-#        [N/4] <label> ... . . . ✓ (X.Xs)
-#      A `.` is appended every 2 s during the step's background job, so long
-#      operations don't look frozen. Output is pure append-only — no `\r`,
-#      no cursor positioning — so it cannot collapse into the "wall of
-#      stacked frames" that earlier in-place attempts produced on this
-#      terminal host.
-#   5. After the last step, hand off to `vbi` so the user lands on its
-#      interactive home view (mini banner + quick-start menu + REPL).
+#   4. Each install step is one in-place row: a braille spinner rotates
+#      while the step's background job runs, then the bracket flips to
+#      `[✓]` and the line ends with elapsed `(X.Xs)`.
+#   5. Hand off to the just-installed `vbi` (interactive home view).
+#
+# Reliability constraints (verified empirically on this user's terminal):
+#   • `\r` overwrites the current visual row only — if a line is wider than
+#     [Console]::WindowWidth and wraps, `\r` no longer reaches the start of
+#     the LOGICAL line, so subsequent writes accumulate as new rows. Every
+#     line printed here is therefore kept comfortably under 80 chars
+#     (taglines, step lines, skyline row).
+#   • ANSI relative cursor up (`\033[<n>A`) works as expected; we use it to
+#     reach the skyline row from each step's spinner row.
 
 [CmdletBinding()]
 param(
@@ -30,7 +35,19 @@ $ErrorActionPreference = "Stop"
 $ESC = [char]27
 $RST = "$ESC[0m"
 
-$script:VBISkyline = "▂▅▃▆▂▇▄█▃▆▂▅▃▆▄█▂▇▆▄█▂▇▃▆▂▅▃▆▂▇▄█▃▆▂▅▆▄█▂▇▃▆▂"
+# Force UTF-8 on the .NET Console writer. Without this, [Console]::Write
+# (used for the in-place spinner / skyline updates) goes through the OEM
+# code page and turns every Unicode block / braille char into `?`.
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch {}
+
+$script:VBISkyline       = "▂▅▃▆▂▇▄█▃▆▂▅▃▆▄█▂▇▆▄█▂▇▃▆▂▅▃▆▂▇▄█▃▆▂▅▆▄█▂▇▃▆▂"
+$script:VBIBrailleFrames = @('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
+
+# Distance (in printed lines) from the skyline row down to the row where the
+# next step's spinner is being written. Bumped by 1 every time we print a
+# static line below the skyline, and again once each step's final
+# (`[✓]/[✗]`) line is committed.
+$script:SkylineLinesBelow = 0
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,25 +69,72 @@ function Write-Gradient {
     }
 }
 
-# Run one install step. Output shape:
-#   "  [N/T] <label> ... . . . ✓ (X.Xs)"
-# Pure append-only — no `\r`, no cursor positioning — so the layout cannot
-# collapse on terminal hosts that mishandle in-place updates.
+# Print a static line below the skyline and bump the line counter so
+# Invoke-Step knows how far up to jump when re-rendering the skyline.
+function Write-StaticLine { param([string]$Line)
+    Write-Host $Line
+    $script:SkylineLinesBelow++
+}
+
+# Render the skyline row at $FilledChars / total filled.
+function Format-Skyline { param([int]$FilledChars)
+    $total = $script:VBISkyline.Length
+    $built = if ($FilledChars -gt 0) { $script:VBISkyline.Substring(0, [math]::Min($FilledChars, $total)) } else { "" }
+    $empty = "░" * [math]::Max(0, $total - $FilledChars)
+    return "  $ESC[38;5;215m$built$RST$ESC[2m$empty$RST"
+}
+
+# Render one step line. KEEP THE VISIBLE WIDTH UNDER 80 — that's the budget
+# `\r` can reliably overwrite. Format:
+#   "  [<braille>] <label> ..."           ← while running
+#   "  [   ✓    ] <label> ... (X.Xs)"     ← after success
+function Format-StepLine {
+    param([string]$Marker, [string]$Color, [string]$Label, [string]$Tail)
+    $tailStr = if ($Tail) { " $ESC[2m$Tail$RST" } else { "" }
+    return "  $ESC[2m[$RST$Color$Marker$RST$ESC[2m]$RST $Label ...$tailStr"
+}
+
+# Run one install step with a rotating braille spinner (in-place via `\r`)
+# and a skyline that paints toward this step's quota.
 function Invoke-Step {
     param([int]$N, [int]$Total, [string]$Label, [scriptblock]$Action)
 
-    Write-Host -NoNewline "  $ESC[2m[$N/$Total]$RST $Label ..."
+    $totalSky    = $script:VBISkyline.Length
+    $stepEndChar = [int]([math]::Round(($N / $Total) * $totalSky))
+
+    # Initial render — spinner frame 0, dim brackets, no tail.
+    $stepLine = Format-StepLine -Marker $script:VBIBrailleFrames[0] `
+                  -Color "$ESC[38;5;215m" `
+                  -Label $Label -Tail ""
+    [Console]::Write($stepLine)
 
     $sw      = [Diagnostics.Stopwatch]::StartNew()
     $job     = Start-Job -ScriptBlock $Action
-    $lastDot = [DateTime]::Now
-    while ($job.State -eq 'Running') {
-        Start-Sleep -Milliseconds 200
-        $now = [DateTime]::Now
-        if (($now - $lastDot).TotalSeconds -ge 2) {
-            Write-Host -NoNewline " $ESC[2m.$RST"
-            $lastDot = $now
+    $tickIdx = 0
+    $tickMs  = 100
+    # Always show at least 5 spinner frames so the animation is visible even
+    # for fast steps (local clone, cached pip, instant verify).
+    $minTicks = 5
+
+    while ($job.State -eq 'Running' -or $tickIdx -lt $minTicks) {
+        Start-Sleep -Milliseconds $tickMs
+        $tickIdx++
+        $br = $script:VBIBrailleFrames[$tickIdx % $script:VBIBrailleFrames.Count]
+
+        # Advance skyline by 1 char per tick toward this step's end target.
+        if ($script:VBICurrentSkylineFill -lt $stepEndChar) {
+            $script:VBICurrentSkylineFill++
         }
+
+        $skyLine  = Format-Skyline -FilledChars $script:VBICurrentSkylineFill
+        $stepLine = Format-StepLine -Marker $br -Color "$ESC[38;5;215m" `
+                      -Label $Label -Tail ""
+
+        # Cursor up to skyline row, redraw it, come back down, redraw step.
+        # All of (skyline, intervening static lines, step line) are kept under
+        # 80 chars so neither row can wrap and break the offset math.
+        $up = $script:SkylineLinesBelow
+        [Console]::Write("`r$ESC[${up}A$ESC[2K$skyLine$ESC[${up}B`r$ESC[2K$stepLine")
     }
 
     $output = Receive-Job $job 2>&1
@@ -79,12 +143,27 @@ function Invoke-Step {
     $sw.Stop()
     $secs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
 
+    # Snap skyline to this step's quota even if the job ended fast.
+    $script:VBICurrentSkylineFill = $stepEndChar
+    $skyLine = Format-Skyline -FilledChars $script:VBICurrentSkylineFill
+
     if ($failed) {
-        Write-Host " $ESC[91m✗$RST $ESC[2m(${secs}s)$RST"
+        $finalStep = Format-StepLine -Marker "✗" -Color "$ESC[91m" `
+                       -Label $Label -Tail "(${secs}s)"
+    } else {
+        $finalStep = Format-StepLine -Marker "✓" -Color "$ESC[32m" `
+                       -Label $Label -Tail "(${secs}s)"
+    }
+
+    $up = $script:SkylineLinesBelow
+    [Console]::Write("`r$ESC[${up}A$ESC[2K$skyLine$ESC[${up}B`r$ESC[2K$finalStep")
+    [Console]::WriteLine()
+    $script:SkylineLinesBelow++
+
+    if ($failed) {
         Write-Host $output -ForegroundColor Red
         throw "Step failed: $Label"
     }
-    Write-Host " $ESC[32m✓$RST $ESC[2m(${secs}s)$RST"
 }
 
 # ── banner + immediate-display block ────────────────────────────────────────
@@ -101,8 +180,12 @@ $banner = @(
 try { Clear-Host } catch { Write-Host "" }
 Write-Gradient -Lines $banner
 
-Write-Host "  $ESC[38;5;215m$script:VBISkyline$RST"
+# Skyline placeholder — empty bar, filled char-by-char as steps run.
+$script:VBICurrentSkylineFill = 0
+Write-Host (Format-Skyline -FilledChars 0)
+$script:SkylineLinesBelow = 1   # cursor is now 1 line below the skyline row
 
+# Read version once.
 $pyprojectPath = Join-Path $Source "pyproject.toml"
 $VBIVersion = "0.0.0"
 if (Test-Path $pyprojectPath) {
@@ -111,11 +194,11 @@ if (Test-Path $pyprojectPath) {
 }
 $VBIReleaseDate = "2026-04-27"
 
-Write-Host "$ESC[2m       Local-first AI usage inspection$RST"
-Write-Host "$ESC[2;3m       CLUSTER&Associates  Architecture Design$RST"
-Write-Host "$ESC[2;3m            Visual Budget Inspection$RST"
-Write-Host "$ESC[2m            v$VBIVersion  ·  $VBIReleaseDate$RST"
-Write-Host ""
+Write-StaticLine "$ESC[2m       Local-first AI usage inspection$RST"
+Write-StaticLine "$ESC[2;3m       CLUSTER&Associates  Architecture Design$RST"
+Write-StaticLine "$ESC[2;3m            Visual Budget Inspection$RST"
+Write-StaticLine "$ESC[2m            v$VBIVersion  ·  $VBIReleaseDate$RST"
+Write-StaticLine ""
 
 # ── preflight: PowerShell 7+ and Python 3.10+ ───────────────────────────────
 
@@ -141,10 +224,10 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "  $ESC[2mPython:$RST  $((& $pyCmd --version).Trim())"
-Write-Host ""
+Write-StaticLine "  $ESC[2mPython:$RST  $((& $pyCmd --version).Trim())"
+Write-StaticLine ""
 
-# ── install steps ───────────────────────────────────────────────────────────
+# ── install steps (label kept SHORT so step row never wraps) ────────────────
 
 if (Test-Path $Target) {
     Remove-Item -Recurse -Force $Target
@@ -160,7 +243,7 @@ Invoke-Step 2 4 "create Python venv" {
     if ($LASTEXITCODE -ne 0) { throw "python -m venv exited with code $LASTEXITCODE" }
 }
 
-Invoke-Step 3 4 "install dependencies (rich, pyyaml, pyfiglet)" {
+Invoke-Step 3 4 "install dependencies" {
     & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -e $using:Target 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "pip install exited with code $LASTEXITCODE" }
 }
@@ -172,6 +255,10 @@ Invoke-Step 4 4 "verify vbi command" {
 }
 
 Write-Host ""
+
+# Hold the completed install summary so the user can read it before vbi
+# clears the screen for its own home view.
+Start-Sleep -Seconds 1.5
 
 # Hand off to the freshly-installed vbi → home view (REPL).
 & "$Target\.venv\Scripts\vbi.exe"

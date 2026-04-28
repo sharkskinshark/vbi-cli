@@ -16,7 +16,6 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from ._farewell import CtrlCExit
 from .contracts import NormalizedRecord
 from .registry import get_adapters
 from .splash import splash_sync
@@ -299,13 +298,16 @@ def run_live(interval: int, once: bool) -> int:
         sys.stdout.write(frame + "\n")
         sys.stdout.flush()
 
-    exit_handler = CtrlCExit()
+    # Ctrl+C inside `vbi live` exits cleanly. The home REPL (the launcher
+    # process when this runs as a subprocess of `vbi`) detects the
+    # interrupt and arms its own double-tap goodbye — we don't need a
+    # nested home view here, which used to clash with the parent's stdin
+    # cleanup and crash with EOFError on input().
     idle_footer = f"  (refreshing every {refresh}s  Ctrl+C to exit)"
     while True:
-        print(exit_handler.footer(idle_footer))
+        print(idle_footer)
         try:
             time.sleep(refresh)
         except KeyboardInterrupt:
-            if exit_handler.handle_interrupt():
-                return 0
+            return 130
         _tick()
