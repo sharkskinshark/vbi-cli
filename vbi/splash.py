@@ -46,7 +46,6 @@ _GRADIENT_R   = (255, 215, 130)
 _TAGLINE      = "    Local-first AI usage inspection"
 _BYLINE       = "      CLUSTER&Associates  Architecture Design"
 _FULLNAME     = "         Visual Budget Inspection"
-_RELEASE_DATE = "2026-04-27"
 
 
 def _version() -> str:
@@ -111,7 +110,7 @@ def _print_banner() -> None:
     sys.stdout.write(f"{_DIM}{_TAGLINE}{_RST}\n")
     sys.stdout.write(f"{_DIM}\033[3m{_BYLINE}{_RST}\n")
     sys.stdout.write(f"{_DIM}\033[3m{_FULLNAME}{_RST}\n")
-    sys.stdout.write(f"{_DIM}            v{_version()}  ·  {_RELEASE_DATE}{_RST}\n\n")
+    sys.stdout.write(f"{_DIM}            v{_version()}{_RST}\n\n")
     sys.stdout.flush()
 
 
