@@ -25,10 +25,15 @@ SKIP_DIR_PATTERNS = (
 )
 
 RUNTIME_ARTIFACT_NAMES = {
+    "accounts.json",
     "live_usage.json",
     "oauth_creds.json",
     "config.yaml",
     "vbi.entitlements.yaml",
+}
+
+RUNTIME_ARTIFACT_DIR_NAMES = {
+    ".google-mcp",
 }
 
 RUNTIME_ARTIFACT_SUFFIXES = {
@@ -89,11 +94,25 @@ def _is_text_candidate(path: Path) -> bool:
 
 def _scan_artifact(path: Path, root: Path) -> list[Finding]:
     rel = str(path.relative_to(root))
+    rel_parts = path.relative_to(root).parts
     findings: list[Finding] = []
     if path.name in RUNTIME_ARTIFACT_NAMES or path.suffix in RUNTIME_ARTIFACT_SUFFIXES:
         findings.append(Finding("critical", rel, 0, "runtime-artifact", "runtime or credential artifact must not be committed"))
-    if "runtime-output" in path.relative_to(root).parts:
+    if ".google-mcp" in rel_parts:
+        findings.append(Finding("critical", rel, 0, "google-mcp-artifact", "Google MCP account/token artifact must not be in the repo"))
+    if "runtime-output" in rel_parts:
         findings.append(Finding("critical", rel, 0, "runtime-output", "generated runtime output must not be committed"))
+    return findings
+
+
+def _scan_dir_artifact(path: Path, root: Path) -> list[Finding]:
+    rel = str(path.relative_to(root))
+    rel_parts = path.relative_to(root).parts
+    findings: list[Finding] = []
+    if path.name in RUNTIME_ARTIFACT_DIR_NAMES:
+        findings.append(Finding("critical", rel, 0, "google-mcp-artifact", "Google MCP account/token directory must not be in the repo"))
+    if ".google-mcp" in rel_parts and path.name == "tokens":
+        findings.append(Finding("critical", rel, 0, "google-mcp-tokens", "Google MCP token directory must not be in the repo"))
     return findings
 
 
@@ -121,8 +140,15 @@ def run_audit(root: Path) -> list[Finding]:
     root = root.resolve()
     findings: list[Finding] = []
     for current, dirs, files in os.walk(root):
-        dirs[:] = [name for name in dirs if not _is_skipped_dir_name(name)]
         current_path = Path(current)
+        kept_dirs: list[str] = []
+        for name in dirs:
+            if _is_skipped_dir_name(name):
+                continue
+            dir_path = current_path / name
+            findings.extend(_scan_dir_artifact(dir_path, root))
+            kept_dirs.append(name)
+        dirs[:] = kept_dirs
         for name in files:
             path = current_path / name
             if _is_skipped(path, root):

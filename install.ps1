@@ -192,7 +192,7 @@ if (Test-Path $pyprojectPath) {
     $verLine = Select-String -Path $pyprojectPath -Pattern '^\s*version\s*=\s*"([^"]+)"' | Select-Object -First 1
     if ($verLine) { $VBIVersion = $verLine.Matches[0].Groups[1].Value }
 }
-$VBIReleaseDate = "2026-04-27"
+$VBIReleaseDate = "2026-04-28"
 
 Write-StaticLine "$ESC[2m       Local-first AI usage inspection$RST"
 Write-StaticLine "$ESC[2;3m       CLUSTER&Associates  Architecture Design$RST"
