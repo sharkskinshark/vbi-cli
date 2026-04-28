@@ -28,7 +28,7 @@
 param(
     [string]$Target = "$env:USERPROFILE\vbi-cli",
     [string]$Source = (Split-Path -Parent $MyInvocation.MyCommand.Path),
-    [switch]$NoLaunch  # accepted but unused; kept for backward compat
+    [switch]$NoLaunch  # skip the final REPL hand-off (CI / scripted reinstalls)
 )
 
 $ErrorActionPreference = "Stop"
@@ -261,4 +261,8 @@ Write-Host ""
 Start-Sleep -Seconds 1.5
 
 # Hand off to the freshly-installed vbi → home view (REPL).
-& "$Target\.venv\Scripts\vbi.exe"
+# Skipped under -NoLaunch so the script can be used from CI or scripted
+# reinstall flows that don't want to block on an interactive prompt.
+if (-not $NoLaunch) {
+    & "$Target\.venv\Scripts\vbi.exe"
+}
