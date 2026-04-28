@@ -32,6 +32,28 @@ _AGENT_CLI_IDS: frozenset[str] = frozenset({
 })
 
 
+def _inherited_mcp_from(app_record_id: str) -> str | None:
+    """If ``app_record_id`` embeds another agent's runtime as an extension,
+    return the source agent's record_id so the map can show an inheritance
+    annotation (e.g. Antigravity ships the Claude Code extension and
+    therefore inherits Claude Code's MCP configuration).
+
+    Detection is filesystem-only: we look for an extension directory whose
+    name starts with the source agent's slug. No file contents are read.
+    """
+    if app_record_id == "antigravity":
+        ext_dir = Path.home() / ".antigravity" / "extensions"
+        if not ext_dir.is_dir():
+            return None
+        try:
+            for entry in ext_dir.iterdir():
+                if entry.is_dir() and entry.name.lower().startswith("anthropic.claude-code"):
+                    return "claude-code-cli"
+        except OSError:
+            return None
+    return None
+
+
 def _host_from_mcp_path(path: Path) -> str | None:
     """Map an MCP config file path to the host record_id it configures."""
     s = str(path).replace("\\", "/").lower()
@@ -108,6 +130,8 @@ def render_tree() -> None:
     console = Console()
     root = Tree("[bold]VBI[/bold]  [dim]local AI tooling map[/dim]")
 
+    name_by_id = {r.record_id: r.display_name for r in apps + clis}
+
     if apps:
         ide_branch = root.add("[bold #ff8c1a]IDE / Desktop[/bold #ff8c1a]")
         for r in apps:
@@ -116,6 +140,10 @@ def render_tree() -> None:
                 node.add(f"[grey70]ext  ·  {ext.display_name}[/grey70]")
             for mcp in sorted(mcp_by_host.get(r.record_id, set())):
                 node.add(f"[#cc6699]mcp  ·  {mcp}[/#cc6699]")
+            inherited_from = _inherited_mcp_from(r.record_id)
+            if inherited_from:
+                source_name = name_by_id.get(inherited_from, inherited_from)
+                node.add(f"[dim italic]↳ inherits MCP from {source_name} (extension)[/dim italic]")
 
     agents = [r for r in clis if r.record_id in _AGENT_CLI_IDS]
     other_clis = [r for r in clis if r.record_id not in _AGENT_CLI_IDS]
@@ -199,6 +227,20 @@ def render_mermaid() -> str:
                 out.append(f'    {host_node} -.-> {node}(("{s}")):::mcp')
         out.append("")
 
+    # Inheritance edges: e.g. Antigravity bundles the Claude Code extension
+    # and therefore "inherits" Claude Code's MCP set without configuring its
+    # own. We render this as a dotted labeled edge between the two hosts.
+    inheritance_edges: list[tuple[str, str]] = []
+    for r in apps:
+        src = _inherited_mcp_from(r.record_id)
+        if src:
+            inheritance_edges.append((r.record_id, src))
+    if inheritance_edges:
+        out.append("    %% Inherited MCP relationships (extension-mediated)")
+        for app_id, src_id in inheritance_edges:
+            out.append(f'    {_slug(app_id)} -. "inherits MCP" .-> {_slug(src_id)}')
+        out.append("")
+
     if cloud_hosted:
         out.append("    %% Cloud-hosted MCP (claude.ai account)")
         out.append('    cloud[/"Cloud (claude.ai)"/]:::cloud')
@@ -270,6 +312,7 @@ def run_map(mermaid: bool = False, html: bool = False, output: str | None = None
             buf = Console(record=True, force_terminal=False, width=120)
             apps, clis, by_ext_host, mcp_by_host, cloud_hosted = _build_relationships()
             tree_root = Tree("VBI  local AI tooling map")
+            file_name_by_id = {r.record_id: r.display_name for r in apps + clis}
             if apps:
                 ide_branch = tree_root.add("IDE / Desktop")
                 for r in apps:
@@ -278,6 +321,10 @@ def run_map(mermaid: bool = False, html: bool = False, output: str | None = None
                         node.add(f"ext  ·  {ext.display_name}")
                     for mcp in sorted(mcp_by_host.get(r.record_id, set())):
                         node.add(f"mcp  ·  {mcp}")
+                    inherited_from = _inherited_mcp_from(r.record_id)
+                    if inherited_from:
+                        source_name = file_name_by_id.get(inherited_from, inherited_from)
+                        node.add(f"↳ inherits MCP from {source_name} (extension)")
             agents = [r for r in clis if r.record_id in _AGENT_CLI_IDS]
             other_clis = [r for r in clis if r.record_id not in _AGENT_CLI_IDS]
             if agents:
