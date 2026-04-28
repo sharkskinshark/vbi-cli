@@ -6,10 +6,6 @@ Local-first terminal dashboard for AI tool usage. Reads on-disk telemetry that t
 
 Requires Python 3.10+.
 
-On Windows/PowerShell, the installer typically takes about 25 seconds on this
-release build; network speed, pip cache state, and antivirus scanning can move
-that number.
-
 ```bash
 pip install -e .
 ```
