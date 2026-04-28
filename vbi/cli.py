@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .audit import has_critical, render_findings, run_audit
 from .dashboard import run_dashboard
+from .export_cmd import run_export
 from .inventory import fetch_cached_status, render_inventory, run_inventory
 from .live import run_live
 from .map_cmd import run_map
@@ -95,7 +96,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("audit", help="run release safety audit")
-    subparsers.add_parser("export", help="(not yet implemented) export sanitized report")
+
+    export_parser = subparsers.add_parser(
+        "export",
+        help="write a sanitized JSON report (inventory + cached usage + audit) to ./vbi-report-YYYYMMDD.json",
+    )
+    export_parser.add_argument(
+        "--output",
+        default=None,
+        help="override the output path (default: ./vbi-report-YYYYMMDD.json in cwd)",
+    )
 
     update_parser = subparsers.add_parser(
         "update",
@@ -237,6 +247,8 @@ def main() -> int:
             return run_live(interval=args.interval, once=args.once)
         if args.command == "map":
             return run_map(mermaid=args.mermaid, html=args.html, output=args.output)
+        if args.command == "export":
+            return run_export(output=args.output)
         if args.command == "update":
             return run_update(check_only=args.check)
     except KeyboardInterrupt:
