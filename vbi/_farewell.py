@@ -20,6 +20,7 @@ import difflib
 import os
 import subprocess
 import sys
+import time
 
 from .splash import _GRADIENT_L, _GRADIENT_R, _gradient_line, _version
 
@@ -41,10 +42,36 @@ _FAREWELL_FULLNAME = "Visual Budget Inspection"
 
 _EXIT_WORDS = {"exit", "quit", "q"}
 
+# Window (seconds) used to absorb queued Ctrl+C signals AFTER a subcommand
+# exits. Reason: on Windows, CTRL_C_EVENT is broadcast to every process in
+# the console group, so when the user presses Ctrl+C inside `live` /
+# `dashboard`, the parent (this REPL) typically receives MORE THAN ONE KbI.
+# Without this drain, the second queued signal fires during the next
+# input() call at the home prompt, instantly burning through the warning
+# state and exiting vbi — exactly the "first Ctrl+C at home directly
+# exits" symptom users hit on the 2nd run-through.
+_KBI_DRAIN_WINDOW_S = 0.2
+
 # Commands that own the full terminal while running (clear-screen loop).
 # After they exit we always re-show the home view so the user isn't left
 # staring at the last rendered frame.
 _FULLSCREEN_CMDS = {"live", "dashboard"}
+
+
+def _drain_pending_kbi(window: float = _KBI_DRAIN_WINDOW_S) -> None:
+    """Absorb queued Ctrl+C signals before returning to the home prompt.
+
+    Sleeps in short slices for ``window`` seconds. If a KeyboardInterrupt
+    fires (i.e. the OS had a queued signal to deliver), we swallow it and
+    reset the deadline so a burst of signals can fully drain. When the
+    window passes without a KbI, we know the queue is empty.
+    """
+    deadline = time.monotonic() + window
+    while time.monotonic() < deadline:
+        try:
+            time.sleep(0.05)
+        except KeyboardInterrupt:
+            deadline = time.monotonic() + window
 
 # Known top-level vbi sub-commands (mirrors cli.COMMANDS plus --help).
 # Used by the home prompt to catch typos and suggest fixes BEFORE shelling
@@ -207,6 +234,10 @@ class CtrlCExit:
                 except KeyboardInterrupt:
                     continue
 
+        # Drain any signals that may have been queued during splash_sync()
+        # before we land on the first input() — otherwise the first
+        # Ctrl+C the user presses can race with a leftover signal.
+        _drain_pending_kbi()
         _safe_redraw(armed=False)
         home_is_fresh = True
 
