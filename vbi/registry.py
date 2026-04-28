@@ -15,6 +15,7 @@ from vbi.providers.antigravity import AntigravityAdapter
 from vbi.providers.claude_code import ClaudeCodeAdapter
 from vbi.providers.codex_cli import CodexCliAdapter
 from vbi.providers.gemini_cli import GeminiCliAdapter
+from vbi.providers.opencode import OpenCodeAdapter
 from vbi.providers.unavailable import UnavailableProviderAdapter
 
 
@@ -27,6 +28,7 @@ def get_adapters() -> list[object]:
         ClaudeCodeAdapter(),
         CodexCliAdapter(),
         GeminiCliAdapter(),
+        OpenCodeAdapter(),
         UnavailableProviderAdapter(),
     ]
 

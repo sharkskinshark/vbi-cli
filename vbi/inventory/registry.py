@@ -384,10 +384,11 @@ DESCRIPTORS: tuple[Descriptor, ...] = (
         display_name="OpenCode",
         kind="cli",
         host="terminal",
-        usage_status_default="unavailable",
+        usage_status_default="telemetry_possible",
         detection_rules=(
             _path_command("opencode"),
-            _user_directory("OpenCode user dir", ".opencode"),
+            _user_directory("OpenCode user dir (XDG)", ".local", "share", "opencode"),
+            _user_directory("OpenCode user dir (legacy)", ".opencode"),
         ),
         dedup_aliases=("opencode",),
     ),
