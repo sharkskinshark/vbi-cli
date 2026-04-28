@@ -244,7 +244,7 @@ Invoke-Step 2 4 "create Python venv" {
 }
 
 Invoke-Step 3 4 "install dependencies" {
-    & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -e $using:Target 2>&1 | Out-Null
+    & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check --prefer-binary -e $using:Target 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "pip install exited with code $LASTEXITCODE" }
 }
 
