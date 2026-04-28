@@ -7,15 +7,17 @@ Behaviour:
   • At the prompt: type a vbi sub-command (e.g. `live`, `dashboard`, `map`,
     `sync`, `--help`) and it runs as `python -m vbi <args>`. When that
     sub-command returns, you land back on the same prompt.
-  • Press Ctrl+C twice within ~2 s — or type `exit` / `quit` / `q` — to
-    fully exit vbi back to your shell.
+  • Press Ctrl+C — or type `exit` / `quit` / `q` — to fully exit vbi back
+    to your shell. (We used to require Ctrl+C twice, but on Windows the
+    timing of the warning print racing against the next ``input()`` call
+    made the behaviour unreliable; a single tap is simpler and works
+    consistently across hosts.)
 """
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
-import time
 
 from .splash import _GRADIENT_L, _GRADIENT_R, _gradient_line, _version
 
@@ -24,11 +26,9 @@ _AMBER  = "\033[38;5;215m"
 _ORANGE = "\033[38;5;208m"
 _DIM    = "\033[2m"
 _BOLD   = "\033[1m"
-_YELLOW = "\033[93m"
 _RST    = "\033[0m"
 _SEP    = "─" * 65
 
-_DOUBLE_TAP_WINDOW = 2.0
 _EXIT_WORDS = {"exit", "quit", "q"}
 
 
@@ -88,29 +88,22 @@ class CtrlCExit:
         return idle_text
 
     def handle_interrupt(self) -> bool:
-        """Print home view + run an interactive prompt until the user fully
-        exits (Ctrl+C twice within window, or types `exit`). Returns True so
-        the calling sub-mode loop returns 0 once we're done."""
+        """Print home view + run an interactive prompt until the user exits.
+
+        A single Ctrl+C (or `exit` / `quit` / `q`, or Ctrl+D) terminates
+        the loop and signals the calling sub-mode to ``return 0``.
+        """
         print(_home_view())
         print(
             f"  {_DIM}type a command (live, dashboard, map, sync, --help)"
-            f" or Ctrl+C twice to exit vbi{_RST}"
+            f" or Ctrl+C to exit vbi{_RST}"
         )
         prompt = f"  {_ORANGE}vbi>{_RST} "
-        last_tap = 0.0
         while True:
             try:
                 cmd = input(prompt).strip()
-            except KeyboardInterrupt:
-                now = time.time()
-                if now - last_tap < _DOUBLE_TAP_WINDOW:
-                    print()  # blank line after ^C so shell prompt is clean
-                    return True
-                last_tap = now
-                print(f"\n  {_YELLOW}⚠ press Ctrl+C again to exit{_RST}")
-                continue
-            except EOFError:
-                # Ctrl+D / closed stdin → exit gracefully.
+            except (KeyboardInterrupt, EOFError):
+                print()  # newline so the shell prompt sits on a clean row
                 return True
 
             if not cmd:

@@ -165,10 +165,28 @@ def _run_sync(force: bool, provider: str) -> int:
             print(f"No provider adapter found: {provider}")
             return 2
 
+    use_color = sys.stdout.isatty()
+    name_width = max(len(getattr(a, "record_id", "")) for a in adapters)
+
+    def _icon(status: str) -> str:
+        if not use_color:
+            return {"updated": "[ok]", "unavailable": "[--]", "failed": "[!!]"}.get(status, "[??]")
+        return {
+            "updated":     "\033[32m✓\033[0m",
+            "unavailable": "\033[2m·\033[0m",
+            "failed":      "\033[91m✗\033[0m",
+        }.get(status, "?")
+
+    def _msg(text: str, max_len: int = 78) -> str:
+        text = text.replace("\n", " ").strip()
+        if len(text) > max_len:
+            text = text[: max_len - 1] + "…"
+        return f"\033[2m{text}\033[0m" if use_color else text
+
     exit_code = 0
     for adapter in adapters:
         result = adapter.sync(force=force)
-        print(f"{result.record_id}: {result.status} - {result.message}")
+        print(f"  {_icon(result.status)} {result.record_id.ljust(name_width)}  {_msg(result.message)}")
         if result.status == "failed":
             exit_code = 1
     return exit_code
