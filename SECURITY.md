@@ -11,6 +11,10 @@ Before publishing, run `vbi audit` and verify:
 - no runtime cache artifacts
 - no local SQLite or JSONL telemetry dumps
 - no private OAuth material
+- `.gitignore` includes required local-state and credential patterns
+- tracked files do not include runtime or credential artifacts
+- git history does not contain high-confidence token patterns
+- local release trees do not contain `.google-mcp/`, `.claude/`, `.gcloud/`, or `accounts.json`
 
 ## Credential Handling
 

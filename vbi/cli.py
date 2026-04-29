@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="render once and exit",
     )
 
-    subparsers.add_parser("audit", help="run release safety audit")
+    subparsers.add_parser("audit", help="run GitHub release safety audit")
 
     export_parser = subparsers.add_parser(
         "export",
@@ -258,4 +258,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

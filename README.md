@@ -6,19 +6,53 @@ Local-first terminal dashboard for AI tool usage. Reads on-disk telemetry that t
 
 Requires Python 3.10+.
 
+Windows / PowerShell:
+
+```powershell
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Typical Windows / PowerShell install time is about 25 seconds on this release build. Network speed, pip cache state, and antivirus scanning can move that number.
+
+Developer install:
+
 ```bash
 pip install -e .
 ```
 
-## Run
+## First Run
+
+```bash
+vbi live
+```
+
+The installer drops you into the interactive `vbi>` prompt. Useful first commands:
+
+```text
+live
+status
+inventory
+map
+audit
+exit
+```
+
+You can also run commands directly:
 
 ```bash
 vbi live              # continuous, refresh every 10s (Ctrl+C to exit)
-vbi live --once       # snapshot
+vbi live --once       # one-shot snapshot
 vbi live --interval 30
+vbi status            # cached records only
+vbi inventory         # discover installed AI tooling
+vbi map               # host-first tooling map
+vbi audit             # GitHub release safety scan
+vbi export            # write sanitized JSON report to ~
 ```
 
-Sample frame:
+`vbi export` writes a JSON report that can be consumed by other CLI tools or downstream AI workflows for further analysis and automation.
+
+Sample `vbi live` frame:
 
 ```text
  CLAUDE CODE  ·  Claude Pro  ·  5h
@@ -40,9 +74,11 @@ Sample frame:
 | **Codex CLI** (ChatGPT Plus/Pro) | Context tokens vs window, plan, subscription expiry, 5h + Week reset, quota % | None — every API call writes `rate_limits` to session JSONL |
 | **Gemini CLI** | Session count today | No quota data — Gemini CLI doesn't log token usage locally |
 
-## How data is collected
+## Limits
 
-Each adapter has a strict, documented contract about what's auto vs. trigger-required. See the docstring at the top of each file in `vbi/providers/`. The contract is enforced in code — adapters never probe external APIs to fill gaps. When data is genuinely missing, a hint note tells you which command to run.
+- Gemini CLI does not expose local token/quota data, so `vbi` reports session activity only.
+- Claude Code 5h / Week reset bars require running `/usage` inside Claude Code first.
+- Cost values derived from local telemetry are estimates, not official billing.
 
 ## Privacy
 
@@ -52,17 +88,10 @@ Each adapter has a strict, documented contract about what's auto vs. trigger-req
 - No provider API calls during telemetry collection (`vbi update` and the startup update hint may run `git fetch`)
 - Cache lives at `~/.vbi/cache/` (user-scoped, never committed)
 
-## Adding a provider
+## Data Contract
+
+Each adapter has a strict documented contract about what is automatic vs. trigger-required. The contract is enforced in code: adapters do not probe provider APIs to fill gaps, and missing data is surfaced honestly with a hint when a manual trigger is required.
+
+## Developer Notes
 
 Read [`docs/PROVIDER_ADAPTERS.md`](docs/PROVIDER_ADAPTERS.md) and [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md). Each provider in `vbi/providers/` is a 200–400 line file with a documented data-collection contract at the top.
-
-## Other commands
-
-```bash
-vbi inventory              # discover installed AI tooling (Tier 1 registry)
-vbi inventory --heuristics # plus generic discovery via PATH/npm/pipx/registry
-vbi dashboard              # cache-only dashboard (doesn't sync)
-vbi sync                   # refresh cache for all providers
-vbi status                 # show cached records only (no sync)
-vbi audit                  # release safety scan
-```
