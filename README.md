@@ -49,7 +49,7 @@ pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 Run the installer from the extracted or cloned repo folder. If pip has no cached wheels, dependencies are downloaded from PyPI into the local virtual environment under the install target.
 
-Typical Windows / PowerShell install time is about 25 seconds on this release build. Network speed, pip cache state, and antivirus scanning can move that number.
+Typical Windows / PowerShell install time is about 25-45 seconds on this release build. Network speed, pip cache state, and antivirus scanning can move that number. The installer writes pip diagnostics to `install-pip.log` inside the install target.
 
 Developer install:
 

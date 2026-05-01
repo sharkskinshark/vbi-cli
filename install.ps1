@@ -246,8 +246,20 @@ Invoke-Step 2 4 "create Python venv" {
 }
 
 Invoke-Step 3 4 "install dependencies" {
-    & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check --prefer-binary -e $using:Target 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "pip install exited with code $LASTEXITCODE" }
+    $tmp = Join-Path $using:Target ".tmp"
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    $env:TEMP = $tmp
+    $env:TMP = $tmp
+    $env:PIP_NO_INPUT = "1"
+
+    $log = Join-Path $using:Target "install-pip.log"
+    "vbi-cli pip install log $(Get-Date -Format o)" | Set-Content -Encoding utf8 $log
+
+    & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check --prefer-binary "setuptools>=68" wheel *>> $log
+    if ($LASTEXITCODE -ne 0) { throw "pip bootstrap exited with code $LASTEXITCODE; see $log" }
+
+    & "$using:Target\.venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check --prefer-binary --no-build-isolation -e $using:Target *>> $log
+    if ($LASTEXITCODE -ne 0) { throw "pip install exited with code $LASTEXITCODE; see $log" }
 }
 
 Invoke-Step 4 4 "verify vbi command" {
