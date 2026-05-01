@@ -8,6 +8,8 @@ AI tooling quickly becomes hard to track: different assistants have their own CL
 
 vbi-cli gives that sprawl a local terminal view so you can choose the right tool for the task, plan around token and time limits, and keep experimenting with new AI tools without losing track of the machine you are actually using.
 
+`vbi cleanup` also helps you keep a fresh machine status: it scans for duplicate MCP, Node, and Python runtime processes that AI clients leave behind across sessions, and can stop the older copies on demand so resident memory and PID count stay in check.
+
 Example map output:
 
 ```text
