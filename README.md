@@ -1,6 +1,41 @@
 # vbi-cli
 
-Local-first terminal dashboard for AI tool usage. Reads on-disk telemetry that the AI CLIs already write — no credentials read, no provider API calls.
+Local-first terminal dashboard for AI CLI usage. Reads local usage records that AI CLIs already write; credential values, prompts, and message bodies are not extracted, and provider APIs are not called for usage collection.
+
+## Introduction
+
+AI tooling quickly becomes hard to track: different assistants have their own CLIs, MCP servers, connectors, editor extensions, accounts, usage limits, reset windows, and billing signals. It is easy to forget what is installed, which tool is connected where, and which quota or plan is currently shaping your work.
+
+vbi-cli gives that sprawl a local terminal view so you can choose the right tool for the task, plan around token and time limits, and keep experimenting with new AI tools without losing track of the machine you are actually using.
+
+Example map output:
+
+```text
+machine
+├─ Claude Code
+│  ├─ CLI: claude
+│  └─ MCP: filesystem, github
+├─ Codex CLI
+│  ├─ CLI: codex
+│  └─ MCP: configured servers
+├─ VS Code
+│  └─ Extensions: ChatGPT, Copilot
+└─ Connectors
+   ├─ GitHub
+   └─ Google Drive
+```
+
+## Purpose
+
+vbi-cli helps developers inspect AI CLI usage before they hit plan, context, rate-limit, or budget surprises. It is designed for people using multiple AI coding tools who want one terminal view of local usage signals without sending data to a VBI server.
+
+It also helps users quickly understand which AI tools are installed, detected, and connected on the machine.
+
+The inventory and map views bring MCP servers, CLIs, connectors, and editor extensions into one clear machine-level map.
+
+Because `vbi export` writes sanitized JSON, vbi-cli can also feed automation scripts that decide when to pause, resume, switch tools, or schedule work around token, context, rate-limit, and reset-time windows.
+
+vbi-cli is designed to use very little machine resource: it runs as a terminal process, stores small JSON cache records, and does not run a background service. `status` and `dashboard` read cache only; `live` and `sync` scan local usage files, so their cost depends on how much local CLI history exists.
 
 ## Install
 
@@ -11,6 +46,8 @@ Windows / PowerShell:
 ```powershell
 pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
+
+Run the installer from the extracted or cloned repo folder. If pip has no cached wheels, dependencies are downloaded from PyPI into the local virtual environment under the install target.
 
 Typical Windows / PowerShell install time is about 25 seconds on this release build. Network speed, pip cache state, and antivirus scanning can move that number.
 
@@ -52,18 +89,23 @@ vbi export            # write sanitized JSON report to ~
 
 `vbi export` writes a JSON report that can be consumed by other CLI tools or downstream AI workflows for further analysis and automation.
 
-Sample `vbi live` frame:
+## Example CLI Session
 
 ```text
- CLAUDE CODE  ·  Claude Pro  ·  5h
- ──────────────────────────────────────────────────────────────
- Tokens                                  2.1M tokens
- Session                                 3 today
- Cost                                    $32.01     today
- Spark    ▄▃▄▁                █▃▄▅▄▃▄▁   78.5K tokens this hr
- 5h      [██████████░░░░░░░░░░░░░░░░░░]  3h 16m left   resets 04/26 18:36
- Week    [███████████░░░░░░░░░░░░░░░░░]  4d 08h left   resets 05/01
+PS> vbi status
+record_id | source_type | confidence | status
+claude-code-cli | local_telemetry | medium | ok
+codex-cli | local_telemetry | medium | ok
+gemini-cli | local_telemetry | low | ok
+
+PS> vbi export
+  ✓ report written: ~/vbi-report-20260501.json
+  4 tier1 · 0 tier2 · 3 providers · 0 audit findings · paths sanitized to ~
 ```
+
+Sample `vbi live` frame:
+
+![Color sample of vbi live terminal output](docs/assets/vbi-live-sample.svg)
 
 ## Supported providers
 
@@ -73,20 +115,34 @@ Sample `vbi live` frame:
 | **Claude Code** | Tokens today, cost (estimated), sessions, hourly spark, 5h + Week reset | 5h/Week reset bars require running `/usage` inside Claude Code |
 | **Codex CLI** (ChatGPT Plus/Pro) | Context tokens vs window, plan, subscription expiry, 5h + Week reset, quota % | None — every API call writes `rate_limits` to session JSONL |
 | **Gemini CLI** | Session count today | No quota data — Gemini CLI doesn't log token usage locally |
+| **OpenCode** | Session counts and configured provider names | No token/quota data — credential values are not read |
 
 ## Limits
 
 - Gemini CLI does not expose local token/quota data, so `vbi` reports session activity only.
 - Claude Code 5h / Week reset bars require running `/usage` inside Claude Code first.
-- Cost values derived from local telemetry are estimates, not official billing.
+- Cost values derived from local usage records are estimates, not official billing.
 
 ## Privacy
 
-- Read-only on local files only
-- No credential files are opened (`.credentials.json`, `oauth_creds.json`, `auth.json` JWT body is decoded only for plan/expiry — signing key is not used)
-- No transcript content, no message bodies, no prompts
-- No provider API calls during telemetry collection (`vbi update` and the startup update hint may run `git fetch`)
-- Cache lives at `~/.vbi/cache/` (user-scoped, never committed)
+- Provider usage collection reads local files and writes only VBI-owned cache records under `~/.vbi/cache/`.
+- Credential values are not extracted. Some adapters may read non-secret metadata from local auth files, such as `auth.json` JWT body claims for plan/expiry; signing keys and token values are not used or exported.
+- No transcript content, no message bodies, no prompts are exported.
+- No provider API calls are made for usage collection.
+- `vbi export` writes a sanitized JSON report to `~` by default.
+- `vbi update` and the startup update hint may run `git fetch`.
+
+## Disclaimer
+
+vbi-cli is provided as-is, without warranty. It reports best-effort local usage signals and estimates; it is not an official billing, quota, security, or compliance authority.
+
+Users are responsible for reviewing exported reports before sharing them, securing their own machine and home directory, and deciding how to use any automation built on top of `vbi export`.
+
+vbi-cli should not be used as the sole control for high-risk, financial, security-critical, or production automation decisions.
+
+## Attribution
+
+vbi-cli was originally created by CLUSTER & Associates. Forks and modified versions should preserve the original copyright and license notice, and should not imply that modified versions are the original upstream project unless they are released by the original maintainers.
 
 ## Data Contract
 

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="360" viewBox="0 0 920 360" role="img" aria-labelledby="title desc">
+  <title id="title">Color sample of vbi live terminal output</title>
+  <desc id="desc">A dark terminal-style vbi live frame showing Claude Code usage, sessions, cost, sparkline, and reset bars with the same color roles as the real terminal view.</desc>
+  <rect width="920" height="360" rx="10" fill="#111111"/>
+  <rect x="1" y="1" width="918" height="358" rx="10" fill="none" stroke="#2b2b2b"/>
+
+  <style>
+    .term { font-family: Consolas, "Cascadia Mono", "SFMono-Regular", Menlo, monospace; font-size: 20px; }
+    .small { font-size: 18px; }
+    .title { fill: #f3f4f6; font-weight: 700; }
+    .muted { fill: #8a8a8a; }
+    .text { fill: #d4d4d4; }
+    .cyan { fill: #22d3ee; }
+    .blue { fill: #60a5fa; }
+    .yellow { fill: #facc15; }
+    .track { fill: #303030; }
+  </style>
+
+  <text x="34" y="44" class="term title">CLAUDE CODE</text>
+  <text x="194" y="44" class="term muted">- Claude Pro - 5h</text>
+  <line x1="34" y1="72" x2="760" y2="72" stroke="#666666" stroke-width="2"/>
+
+  <text x="54" y="112" class="term muted">Tokens</text>
+  <text x="390" y="112" class="term text">2.1M tokens</text>
+
+  <text x="54" y="150" class="term muted">Session</text>
+  <text x="390" y="150" class="term text">3 today</text>
+
+  <text x="54" y="188" class="term muted">Cost</text>
+  <text x="390" y="188" class="term text">$32.01</text>
+  <text x="518" y="188" class="term muted">today</text>
+
+  <text x="54" y="226" class="term muted">Spark</text>
+  <text x="190" y="226" class="term cyan">__--_  _--___--__  _-___-__</text>
+  <text x="548" y="226" class="term text">78.5K tokens this hr</text>
+  <text x="790" y="226" class="term muted small">28h history</text>
+
+  <text x="54" y="264" class="term muted">5h</text>
+  <rect x="190" y="246" width="336" height="24" rx="3" class="track"/>
+  <rect x="190" y="246" width="126" height="24" rx="3" class="blue"/>
+  <text x="548" y="264" class="term text">3h 16m left</text>
+  <text x="724" y="264" class="term muted">resets 04/26 18:36</text>
+
+  <text x="54" y="302" class="term muted">Week</text>
+  <rect x="190" y="284" width="336" height="24" rx="3" class="track"/>
+  <rect x="190" y="284" width="143" height="24" rx="3" class="blue"/>
+  <text x="548" y="302" class="term text">4d 08h left</text>
+  <text x="724" y="302" class="term muted">resets 05/01</text>
+</svg>

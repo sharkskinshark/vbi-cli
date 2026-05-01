@@ -7,6 +7,7 @@ name = "vbi-cli"
 version = "0.1.0"
 description = "Local-first terminal AI usage inspection CLI."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "rich>=13.0",
