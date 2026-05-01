@@ -24,7 +24,7 @@ import sys
 import time
 
 from .splash import _GRADIENT_L, _GRADIENT_R, _gradient_line, _version
-from .terminal import read_prompt
+from .terminal import drain_keyboard_input, read_prompt
 
 
 _AMBER  = "\033[38;5;215m"
@@ -270,11 +270,11 @@ class CtrlCExit:
         signal can never escape this handler and silently exit vbi.
         """
         prompt = f"  {_ORANGE}vbi>{_RST} "
-        # home_is_fresh : True  = home view is on screen right now
-        #                 False = command output is on screen
-        # warned        : True  = warning already shown; next Ctrl+C exits
-        home_is_fresh = False
-        warned = False
+        # prompt_state:
+        #   home   = home view is on screen, first Ctrl+C should warn
+        #   armed  = warning is on screen, next Ctrl+C exits
+        #   output = command output is on screen, Ctrl+C should redraw home
+        prompt_state = "output"
 
         def _safe_redraw(armed: bool) -> None:
             """Redraw the home view, absorbing any queued KbIs that fire
@@ -293,25 +293,26 @@ class CtrlCExit:
         # Ctrl+C the user presses can race with a leftover signal.
         _drain_pending_kbi()
         _safe_redraw(armed=False)
-        home_is_fresh = True
+        prompt_state = "home"
 
         while True:
             try:
                 cmd = read_prompt(prompt).strip()
             except KeyboardInterrupt:
-                if home_is_fresh:
-                    if warned:
-                        # 2nd Ctrl+C at home → farewell + exit.
-                        _print_farewell()
-                        return True
+                if prompt_state == "armed":
+                    # 2nd Ctrl+C at home → farewell + exit.
+                    _print_farewell()
+                    return True
+                if prompt_state == "home":
                     # 1st Ctrl+C at home → show warning.
-                    warned = True
                     _safe_redraw(armed=True)
+                    drain_keyboard_input()
+                    prompt_state = "armed"
                 else:
                     # Ctrl+C while command output is on screen → clean home.
-                    home_is_fresh = True
-                    warned = False
                     _safe_redraw(armed=False)
+                    drain_keyboard_input()
+                    prompt_state = "home"
                 continue
             except EOFError:
                 _print_farewell()
@@ -324,8 +325,7 @@ class CtrlCExit:
                 return True
 
             # A real command resets the warning state.
-            home_is_fresh = False
-            warned = False
+            prompt_state = "output"
             try:
                 head = shlex.split(cmd)[0].lower()
             except (IndexError, ValueError):
@@ -337,9 +337,8 @@ class CtrlCExit:
                 interrupted = True
 
             if interrupted or fullscreen:
-                home_is_fresh = True
-                warned = False
                 _safe_redraw(armed=False)
+                prompt_state = "home"
                 # CRITICAL: drain queued signals from the subcommand's
                 # Ctrl+C broadcast. Without this, the next input() at
                 # the home prompt fires the queued KbI immediately,
@@ -347,7 +346,8 @@ class CtrlCExit:
                 # and exits on the next — looking exactly like "home
                 # Ctrl+C directly exits with no warning".
                 _drain_pending_kbi()
-            # else: output stays on screen; home_is_fresh remains False.
+                drain_keyboard_input()
+            # else: output stays on screen; prompt_state remains "output".
 
     @staticmethod
     def _show_home_fresh(armed: bool = False) -> None:

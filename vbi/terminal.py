@@ -69,6 +69,20 @@ def read_prompt(prompt: str) -> str:
                 sys.stdout.flush()
 
 
+def drain_keyboard_input() -> None:
+    """Clear pending Windows console keypresses after handling Ctrl+C."""
+    if os.name != "nt" or not sys.stdin.isatty():
+        return
+    try:
+        import msvcrt
+    except ImportError:
+        return
+    while msvcrt.kbhit():
+        ch = msvcrt.getwch()
+        if ch in ("\x00", "\xe0") and msvcrt.kbhit():
+            msvcrt.getwch()
+
+
 @contextmanager
 def _ctrl_c_as_keypress():
     """On Windows, make Ctrl+C readable as ``\\x03`` during resident views."""
