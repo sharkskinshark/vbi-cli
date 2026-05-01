@@ -84,12 +84,16 @@ vbi status            # cached records only
 vbi inventory         # discover installed AI tooling
 vbi map               # host-first tooling map
 vbi doctor runtime    # scan duplicate MCP / Node / Python runtimes
-vbi cleanup           # dry-run duplicate runtime cleanup report
+vbi cleanup           # dry-run duplicate runtime report (lists group signatures)
+vbi cleanup --apply   # stop older duplicates, keep the newest in each group
+vbi cleanup --apply --groups "mcp:*"    # only target MCP groups (glob filter)
 vbi audit             # GitHub release safety scan
 vbi export            # write sanitized JSON report to ~
 ```
 
 `vbi export` writes a JSON report that can be consumed by other CLI tools or downstream AI workflows for further analysis and automation.
+
+`vbi cleanup --apply` keeps the newest process in each duplicate group (by start time, ties broken by highest PID) and terminates the rest. It prompts for confirmation unless `--yes` is passed. Use `--groups <patterns>` (comma-separated fnmatch globs) to limit the targets — for example, `--groups "mcp:*"` cleans only stale MCP servers and leaves long-running Node helpers (extension hosts, SDK daemons) alone. Run `vbi cleanup` first to see the duplicate group signatures.
 
 ## Example CLI Session
 
