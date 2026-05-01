@@ -210,7 +210,8 @@ def _is_scanner_self_noise(pid: int, command: str) -> bool:
         return True
     text = command.lower()
     return (
-        "-m vbi doctor runtime" in text
+        "-m vbi " in text
+        or "-m vbi." in text
         or "-m vbi cleanup" in text
         or "get-ciminstance win32_process" in text
         or "vbi runtime process scan" in text
