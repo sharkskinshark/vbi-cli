@@ -185,10 +185,14 @@ $script:VBICurrentSkylineFill = 0
 Write-Host (Format-Skyline -FilledChars 0)
 $script:SkylineLinesBelow = 1   # cursor is now 1 line below the skyline row
 
-# Read version once.
-$pyprojectPath = Join-Path $Source "pyproject.toml"
+# Read version once when the source is a local checkout. URL sources are
+# cloned later, so there is no local pyproject.toml to inspect yet.
 $VBIVersion = "0.0.0"
-if (Test-Path $pyprojectPath) {
+$sourceIsLocalPath = Test-Path -LiteralPath $Source
+if ($sourceIsLocalPath) {
+    $pyprojectPath = Join-Path $Source "pyproject.toml"
+}
+if ($sourceIsLocalPath -and (Test-Path -LiteralPath $pyprojectPath)) {
     $verLine = Select-String -Path $pyprojectPath -Pattern '^\s*version\s*=\s*"([^"]+)"' | Select-Object -First 1
     if ($verLine) { $VBIVersion = $verLine.Matches[0].Groups[1].Value }
 }
