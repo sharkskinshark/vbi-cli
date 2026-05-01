@@ -24,6 +24,7 @@ import sys
 import time
 
 from .splash import _GRADIENT_L, _GRADIENT_R, _gradient_line, _version
+from .terminal import read_prompt
 
 
 _AMBER  = "\033[38;5;215m"
@@ -296,7 +297,7 @@ class CtrlCExit:
 
         while True:
             try:
-                cmd = input(prompt).strip()
+                cmd = read_prompt(prompt).strip()
             except KeyboardInterrupt:
                 if home_is_fresh:
                     if warned:
@@ -325,7 +326,11 @@ class CtrlCExit:
             # A real command resets the warning state.
             home_is_fresh = False
             warned = False
-            fullscreen = cmd.split()[0].lower() in _FULLSCREEN_CMDS
+            try:
+                head = shlex.split(cmd)[0].lower()
+            except (IndexError, ValueError):
+                head = ""
+            fullscreen = head in _FULLSCREEN_CMDS
             try:
                 interrupted = _run_subcommand(cmd)
             except KeyboardInterrupt:

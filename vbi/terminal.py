@@ -24,6 +24,51 @@ def wait_for_exit(seconds: float) -> bool:
                 return True
 
 
+def read_prompt(prompt: str) -> str:
+    """Read one command line, treating Ctrl+C as a single interrupt on Windows."""
+    if os.name != "nt" or not sys.stdin.isatty():
+        return input(prompt)
+
+    try:
+        import msvcrt
+    except ImportError:
+        return input(prompt)
+
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+
+    chars: list[str] = []
+    with _ctrl_c_as_keypress():
+        while True:
+            ch = msvcrt.getwch()
+            if ch in ("\x00", "\xe0"):
+                # Function/arrow key prefix; consume payload and ignore.
+                msvcrt.getwch()
+                continue
+            if ch == "\x03":
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                raise KeyboardInterrupt
+            if ch in ("\x04", "\x1a"):
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                raise EOFError
+            if ch in ("\r", "\n"):
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return "".join(chars)
+            if ch == "\b":
+                if chars:
+                    chars.pop()
+                    sys.stdout.write("\b \b")
+                    sys.stdout.flush()
+                continue
+            if ch >= " ":
+                chars.append(ch)
+                sys.stdout.write(ch)
+                sys.stdout.flush()
+
+
 @contextmanager
 def _ctrl_c_as_keypress():
     """On Windows, make Ctrl+C readable as ``\\x03`` during resident views."""
