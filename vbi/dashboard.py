@@ -9,12 +9,12 @@ refresh provider caches.
 from __future__ import annotations
 
 import os
-import time
 from datetime import datetime, timezone
 
 from .contracts import NormalizedRecord
 from .inventory import fetch_cached_status, run_inventory
 from .inventory.render import _humanize_number
+from .terminal import wait_for_exit
 
 
 MIN_INTERVAL_SECONDS = 5
@@ -151,12 +151,10 @@ def run_dashboard(interval: int, once: bool) -> int:
     # this runs as a subprocess of `vbi`) catches the interrupt itself
     # and arms the double-tap goodbye; nesting another REPL here racing
     # against the parent's stdin teardown was causing EOFError crashes.
-    idle_footer = f"\n(refreshing every {refresh}s, Ctrl+C to exit)"
+    idle_footer = f"\n(refreshing every {refresh}s, Ctrl+C/q to exit)"
     while True:
         _clear_screen()
         print(_render_dashboard_frame())
         print(idle_footer)
-        try:
-            time.sleep(refresh)
-        except KeyboardInterrupt:
+        if wait_for_exit(refresh):
             return 130

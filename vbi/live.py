@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 from datetime import datetime, timezone
 
 from .contracts import NormalizedRecord
 from .registry import get_adapters
 from .splash import splash_sync
+from .terminal import wait_for_exit
 
 
 # ── layout constants ──────────────────────────────────────────────────────────
@@ -303,11 +303,9 @@ def run_live(interval: int, once: bool) -> int:
     # interrupt and arms its own double-tap goodbye — we don't need a
     # nested home view here, which used to clash with the parent's stdin
     # cleanup and crash with EOFError on input().
-    idle_footer = f"  (refreshing every {refresh}s  Ctrl+C to exit)"
+    idle_footer = f"  (refreshing every {refresh}s  Ctrl+C/q to exit)"
     while True:
         print(idle_footer)
-        try:
-            time.sleep(refresh)
-        except KeyboardInterrupt:
+        if wait_for_exit(refresh):
             return 130
         _tick()

@@ -31,6 +31,7 @@ def _c(code: str) -> str:
 
 _AMBER = _c("38;5;208")
 _DIM   = _c("2")
+_ITALIC = _c("3")
 _BOLD  = _c("1")
 _GREEN = _c("32")
 _YLW   = _c("93")
@@ -108,8 +109,8 @@ def _print_banner() -> None:
         else:
             sys.stdout.write(line + "\n")
     sys.stdout.write(f"{_DIM}{_TAGLINE}{_RST}\n")
-    sys.stdout.write(f"{_DIM}\033[3m{_BYLINE}{_RST}\n")
-    sys.stdout.write(f"{_DIM}\033[3m{_FULLNAME}{_RST}\n")
+    sys.stdout.write(f"{_DIM}{_ITALIC}{_BYLINE}{_RST}\n")
+    sys.stdout.write(f"{_DIM}{_ITALIC}{_FULLNAME}{_RST}\n")
     sys.stdout.write(f"{_DIM}            v{_version()}{_RST}\n\n")
     sys.stdout.flush()
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import difflib
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -150,6 +151,47 @@ def _print_farewell() -> None:
     print()
 
 
+def _run_fullscreen_command(head: str, parts: list[str]) -> bool | None:
+    """Run fullscreen commands in-process so Ctrl+C is handled reliably.
+
+    Windows console Ctrl+C delivery can race when the home REPL launches a
+    child Python process. Keeping resident views in the current process avoids
+    depending on cross-process signal delivery.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(prog=f"vbi {head}")
+    if head == "live":
+        from .live import run_live
+
+        parser.add_argument("--interval", type=int, default=30)
+        parser.add_argument("--once", action="store_true")
+        try:
+            args = parser.parse_args(parts[1:])
+        except SystemExit:
+            return False
+        try:
+            return run_live(interval=args.interval, once=args.once) == 130
+        except KeyboardInterrupt:
+            return True
+
+    if head == "dashboard":
+        from .dashboard import run_dashboard
+
+        parser.add_argument("--interval", type=int, default=30)
+        parser.add_argument("--once", action="store_true")
+        try:
+            args = parser.parse_args(parts[1:])
+        except SystemExit:
+            return False
+        try:
+            return run_dashboard(interval=args.interval, once=args.once) == 130
+        except KeyboardInterrupt:
+            return True
+
+    return None
+
+
 def _run_subcommand(cmd_text: str) -> bool:
     """Spawn `python -m vbi <args>` so the typed command runs with the user's
     own Ctrl+C handling and we resume cleanly when it ends. Unknown commands
@@ -160,7 +202,11 @@ def _run_subcommand(cmd_text: str) -> bool:
     caller uses this to arm the double-tap exit window so a follow-up
     Ctrl+C at the next prompt fires immediately.
     """
-    parts = cmd_text.split()
+    try:
+        parts = shlex.split(cmd_text)
+    except ValueError as exc:
+        print(f"  \033[91mparse error:\033[0m {exc}")
+        return False
     if not parts:
         return False
     head = parts[0].lower()
@@ -178,6 +224,11 @@ def _run_subcommand(cmd_text: str) -> bool:
                 f"Type {_ORANGE}--help{_RST} for the full list."
             )
         return False
+
+    if head in _FULLSCREEN_CMDS:
+        result = _run_fullscreen_command(head, parts)
+        if result is not None:
+            return result
 
     # Use Popen + explicit wait so KeyboardInterrupt is reliably caught even
     # when the child exits a split-second before the parent's signal fires.
