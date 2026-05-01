@@ -81,7 +81,7 @@ def _drain_pending_kbi(window: float = _KBI_DRAIN_WINDOW_S) -> None:
 # 'dashboard'?` instead of argparse's full usage dump.
 _KNOWN_COMMANDS = (
     "doctor", "init", "sync", "status", "inventory",
-    "dashboard", "live", "audit", "export", "update", "map",
+    "dashboard", "live", "cleanup", "audit", "export", "update", "map",
     "--help", "-h",
 )
 
@@ -101,6 +101,7 @@ def _home_view() -> str:
             "    dashboard  cached view (no sync, no network)\n"
             "    map        AI tooling host-first map\n"
             "    sync       refresh provider caches\n"
+            "    cleanup    dry-run duplicate runtime scan\n"
             "    export     write sanitized JSON report to ~\n"
             "    --help     all commands\n"
             f"  {_SEP}\n"
@@ -121,6 +122,7 @@ def _home_view() -> str:
         f"    {_ORANGE}dashboard{_RST}  {_DIM}cached view (no sync, no network){_RST}\n"
         f"    {_ORANGE}map{_RST}        {_DIM}AI tooling host-first map{_RST}\n"
         f"    {_ORANGE}sync{_RST}       {_DIM}refresh provider caches{_RST}\n"
+        f"    {_ORANGE}cleanup{_RST}    {_DIM}dry-run duplicate runtime scan{_RST}\n"
         f"    {_ORANGE}export{_RST}     {_DIM}write sanitized JSON report to ~{_RST}\n"
         f"    {_ORANGE}--help{_RST}     {_DIM}all commands{_RST}\n"
         f"  {_DIM}{_SEP}{_RST}\n"
@@ -374,6 +376,6 @@ class CtrlCExit:
             )
         else:
             print(
-                f"  {_DIM}type a command (live, dashboard, map, sync, export, --help)"
+                f"  {_DIM}type a command (live, dashboard, map, sync, cleanup, --help)"
                 f"  ·  Ctrl+C twice to exit, or type 'exit'{_RST}"
             )

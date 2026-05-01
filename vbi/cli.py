@@ -14,6 +14,7 @@ from .inventory import fetch_cached_status, render_inventory, run_inventory
 from .live import run_live
 from .map_cmd import run_map
 from .registry import get_adapters
+from .runtime_cmd import run_cleanup, run_runtime_scan
 from .update_cmd import run_update
 
 
@@ -25,6 +26,7 @@ COMMANDS = [
     "inventory",
     "dashboard",
     "live",
+    "cleanup",
     "map",
     "update",
     "audit",
@@ -75,7 +77,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("doctor", help="inspect local readiness")
+    doctor_parser = subparsers.add_parser("doctor", help="inspect local readiness")
+    doctor_parser.add_argument(
+        "topic",
+        nargs="?",
+        choices=["readiness", "runtime"],
+        default="readiness",
+        help="inspection topic (default: readiness)",
+    )
+    doctor_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="for `runtime`: show all relevant runtime processes, not only duplicates",
+    )
     subparsers.add_parser("init", help="(not yet implemented) initialize VBI-owned local config")
 
     sync_parser = subparsers.add_parser("sync", help="refresh stale or missing provider records")
@@ -132,6 +146,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="render once and exit",
     )
 
+    cleanup_parser = subparsers.add_parser(
+        "cleanup",
+        help="dry-run scan for duplicate MCP / Node / Python runtime processes",
+    )
+    cleanup_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="show all relevant runtime processes, not only duplicates",
+    )
+
     subparsers.add_parser("audit", help="run GitHub release safety audit")
 
     export_parser = subparsers.add_parser(
@@ -177,7 +201,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_doctor() -> int:
+def _run_doctor(topic: str = "readiness", show_all: bool = False) -> int:
+    if topic == "runtime":
+        return run_runtime_scan(show_all=show_all)
+
     adapters = get_adapters()
     print("VBI doctor: release skeleton")
     print(f"Provider adapters registered: {len(adapters)}")
@@ -258,7 +285,9 @@ def main() -> int:
             print(render_findings(findings))
             return 4 if has_critical(findings) else 0
         if args.command == "doctor":
-            return _run_doctor()
+            return _run_doctor(topic=args.topic, show_all=args.all)
+        if args.command == "cleanup":
+            return run_cleanup(show_all=args.all)
         if args.command == "status":
             return _run_status()
         if args.command == "sync":

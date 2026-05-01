@@ -83,6 +83,8 @@ vbi live --interval 30
 vbi status            # cached records only
 vbi inventory         # discover installed AI tooling
 vbi map               # host-first tooling map
+vbi doctor runtime    # scan duplicate MCP / Node / Python runtimes
+vbi cleanup           # dry-run duplicate runtime cleanup report
 vbi audit             # GitHub release safety scan
 vbi export            # write sanitized JSON report to ~
 ```
