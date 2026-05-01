@@ -148,12 +148,33 @@ def build_parser() -> argparse.ArgumentParser:
 
     cleanup_parser = subparsers.add_parser(
         "cleanup",
-        help="dry-run scan for duplicate MCP / Node / Python runtime processes",
+        help="scan duplicate MCP / Node / Python runtime processes (dry-run by default)",
     )
     cleanup_parser.add_argument(
         "--all",
         action="store_true",
         help="show all relevant runtime processes, not only duplicates",
+    )
+    cleanup_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="stop older duplicates, keeping the newest in each group (prompts unless --yes)",
+    )
+    cleanup_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="skip the confirmation prompt when used with --apply",
+    )
+    cleanup_parser.add_argument(
+        "--groups",
+        metavar="PATTERNS",
+        default=None,
+        help=(
+            "comma-separated signatures or fnmatch globs (e.g. 'mcp:*' or "
+            "'mcp:google-workspace-mcp,mcp:mcp'); only matching duplicate "
+            "groups are targeted by --apply"
+        ),
     )
 
     subparsers.add_parser("audit", help="run GitHub release safety audit")
@@ -287,7 +308,12 @@ def main() -> int:
         if args.command == "doctor":
             return _run_doctor(topic=args.topic, show_all=args.all)
         if args.command == "cleanup":
-            return run_cleanup(show_all=args.all)
+            return run_cleanup(
+                show_all=args.all,
+                apply=args.apply,
+                assume_yes=args.yes,
+                groups=args.groups,
+            )
         if args.command == "status":
             return _run_status()
         if args.command == "sync":

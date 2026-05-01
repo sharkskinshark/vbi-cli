@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
@@ -64,13 +65,65 @@ def run_runtime_scan(*, show_all: bool = False) -> int:
     return 0
 
 
-def run_cleanup(*, show_all: bool = False) -> int:
+def run_cleanup(
+    *,
+    show_all: bool = False,
+    apply: bool = False,
+    assume_yes: bool = False,
+    groups: str | None = None,
+) -> int:
     processes = scan_runtime_processes()
-    print("VBI cleanup dry-run")
-    print("No processes were stopped.")
-    print("")
-    print(render_runtime_report(processes, show_all=show_all))
-    return 0
+    full_plan = _build_cleanup_plan(processes)
+
+    if not apply:
+        print("VBI cleanup dry-run")
+        print("No processes were stopped.")
+        print("")
+        print(render_runtime_report(processes, show_all=show_all))
+        if full_plan:
+            print("")
+            print(_render_signature_list(full_plan))
+        print("")
+        print("Use `vbi cleanup --apply` to stop older duplicates (keeps the newest in each group).")
+        print("Use `--groups <patterns>` to target specific signatures (e.g. `--groups 'mcp:*'`).")
+        return 0
+
+    print("VBI cleanup --apply")
+    if not full_plan:
+        print("No duplicate runtime processes to stop.")
+        return 0
+
+    plan = _filter_plan_by_groups(full_plan, groups)
+    if not plan:
+        print(f"No duplicate groups matched filter: {groups!r}")
+        print("")
+        print(_render_signature_list(full_plan))
+        return 1
+
+    print(_render_cleanup_plan(plan))
+    if not assume_yes:
+        try:
+            answer = input("Proceed? [y/N] ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in {"y", "yes"}:
+            print("Aborted. No processes were stopped.")
+            return 1
+
+    stopped = 0
+    failed = 0
+    for entry in plan:
+        for victim in entry["kill"]:
+            ok, msg = _terminate_pid(victim.pid)
+            tag = "✓" if ok else "✗"
+            suffix = f" — {msg}" if msg else ""
+            print(f"  {tag} pid {victim.pid:<6} {victim.name}{suffix}")
+            if ok:
+                stopped += 1
+            else:
+                failed += 1
+    print(f"Done. Stopped {stopped}, failed {failed}.")
+    return 0 if failed == 0 else 2
 
 
 def _scan_windows_processes() -> list[dict[str, Any]]:
@@ -92,7 +145,7 @@ $rows = Get-CimInstance Win32_Process |
       pid = [int]$_.ProcessId
       name = [string]$_.Name
       command = [string]$_.CommandLine
-      started_at = [string]$_.CreationDate
+      started_at = if ($_.CreationDate) { $_.CreationDate.ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
       cpu_seconds = $cpu
     }
   }
@@ -124,7 +177,7 @@ Get-Process |
     @{Name='pid';Expression={[int]$_.Id}},
     @{Name='name';Expression={[string]$_.ProcessName}},
     @{Name='command';Expression={[string]$_.ProcessName}},
-    @{Name='started_at';Expression={if ($_.StartTime) {[string]$_.StartTime} else {'-'}}},
+    @{Name='started_at';Expression={if ($_.StartTime) {$_.StartTime.ToString('yyyy-MM-dd HH:mm:ss')} else {'-'}}},
     @{Name='cpu_seconds';Expression={if ($null -ne $_.CPU) {[double]$_.CPU} else {0}}} |
   ConvertTo-Json -Depth 3
 """
@@ -333,3 +386,103 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"
+
+
+def _started_sort_key(proc: RuntimeProcess) -> tuple:
+    # Newest first: parsed datetime descending, then highest PID descending.
+    # Falls back to PID-only ordering when started_at isn't ISO-formatted
+    # (POSIX `ps etime=` produces elapsed strings, not timestamps).
+    try:
+        dt = datetime.strptime(proc.started_at, "%Y-%m-%d %H:%M:%S")
+        return (0, -dt.timestamp(), -proc.pid)
+    except ValueError:
+        return (1, -proc.pid)
+
+
+def _build_cleanup_plan(processes: list[RuntimeProcess]) -> list[dict[str, Any]]:
+    by_sig: dict[str, list[RuntimeProcess]] = {}
+    for proc in processes:
+        by_sig.setdefault(proc.signature, []).append(proc)
+    plan: list[dict[str, Any]] = []
+    for sig, group in by_sig.items():
+        if len(group) < 2:
+            continue
+        ordered = sorted(group, key=_started_sort_key)
+        plan.append({"signature": sig, "keep": ordered[0], "kill": ordered[1:]})
+    plan.sort(key=lambda entry: entry["signature"])
+    return plan
+
+
+def _render_cleanup_plan(plan: list[dict[str, Any]]) -> str:
+    total_kill = sum(len(entry["kill"]) for entry in plan)
+    lines = [
+        f"Plan: stop {total_kill} older duplicate(s), keep {len(plan)} newest "
+        f"(one per group)",
+        "",
+    ]
+    headers = ["group", "signature", "keep_pid", "kill_pids"]
+    rows: list[list[str]] = [headers]
+    for idx, entry in enumerate(plan, 1):
+        rows.append([
+            str(idx),
+            _truncate(entry["signature"], 60),
+            str(entry["keep"].pid),
+            ", ".join(str(v.pid) for v in entry["kill"]),
+        ])
+    widths = [
+        min(max(len(row[i]) for row in rows), 60) for i in range(len(headers))
+    ]
+    out = [
+        "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(rows[0])),
+        "  ".join("-" * width for width in widths),
+    ]
+    for row in rows[1:]:
+        out.append("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))))
+    lines.append("\n".join(out))
+    return "\n".join(lines)
+
+
+def _filter_plan_by_groups(
+    plan: list[dict[str, Any]],
+    groups: str | None,
+) -> list[dict[str, Any]]:
+    if not groups:
+        return plan
+    patterns = [p.strip() for p in groups.split(",") if p.strip()]
+    if not patterns:
+        return plan
+    return [
+        entry for entry in plan
+        if any(fnmatch.fnmatchcase(entry["signature"], pat) for pat in patterns)
+    ]
+
+
+def _render_signature_list(plan: list[dict[str, Any]]) -> str:
+    lines = [f"Duplicate group signatures ({len(plan)}):"]
+    for entry in plan:
+        sig = _truncate(entry["signature"], 76)
+        lines.append(f"  {sig}  ({len(entry['kill']) + 1} procs)")
+    return "\n".join(lines)
+
+
+def _terminate_pid(pid: int) -> tuple[bool, str]:
+    if pid <= 0 or pid == os.getpid():
+        return False, "skipped self/invalid pid"
+    try:
+        if os.name == "nt":
+            res = subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+            if res.returncode == 0:
+                return True, ""
+            err = (res.stderr or res.stdout or "").strip().splitlines()
+            return False, (err[-1] if err else f"taskkill exit {res.returncode}")
+        import signal
+        os.kill(pid, signal.SIGTERM)
+        return True, ""
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
