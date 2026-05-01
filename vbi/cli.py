@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,42 @@ COMMANDS = [
     "audit",
     "export",
 ]
+
+
+def _configure_windows_console() -> None:
+    """Enable UTF-8 and ANSI processing for Windows console hosts."""
+    if sys.platform != "win32":
+        return
+
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
+    vt_enabled = False
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        enable_vt = 0x0004
+        handles = (-11, -12)  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+        for handle_id in handles:
+            handle = kernel32.GetStdHandle(handle_id)
+            if handle == ctypes.c_void_p(-1).value:
+                continue
+            mode = ctypes.c_uint()
+            if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                continue
+            if kernel32.SetConsoleMode(handle, mode.value | enable_vt):
+                vt_enabled = True
+    except Exception:  # noqa: BLE001
+        vt_enabled = False
+
+    # If the host cannot process ANSI, force all VBI renderers into their
+    # existing plain-text path instead of leaking raw escape sequences.
+    if sys.stdout.isatty() and not vt_enabled:
+        os.environ.setdefault("NO_COLOR", "1")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -198,12 +235,7 @@ def _run_sync(force: bool, provider: str) -> int:
 
 
 def main() -> int:
-    if sys.platform == "win32":
-        try:
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, OSError):
-            pass
+    _configure_windows_console()
     parser = build_parser()
     args = parser.parse_args()
     if not args.command:
