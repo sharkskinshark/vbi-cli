@@ -1,5 +1,5 @@
 # vbi-cli
-
+Visual Budget Inspection
 Local-first terminal dashboard for AI CLI usage. Reads local usage records that AI CLIs already write; credential values, prompts, and message bodies are not extracted, and provider APIs are not called for usage collection.
 
 ## Introduction
