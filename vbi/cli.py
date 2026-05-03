@@ -234,6 +234,25 @@ def build_parser() -> argparse.ArgumentParser:
         default="stdio",
         help="MCP transport (only stdio supported in this release)",
     )
+    install_parser = mcp_sub.add_parser(
+        "install",
+        help="register vbi as an MCP server with Claude Code (auto-detects config)",
+    )
+    install_parser.add_argument(
+        "--config",
+        default=None,
+        help="override config path (default: auto-detect Claude Code / Claude Desktop)",
+    )
+    install_parser.add_argument(
+        "--name",
+        default="vbi",
+        help="MCP server name to register under mcpServers (default: vbi)",
+    )
+    install_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite existing entry without prompting",
+    )
 
     return parser
 
@@ -350,9 +369,14 @@ def main() -> int:
         if args.command == "update":
             return run_update(check_only=args.check)
         if args.command == "mcp":
-            from .mcp.server import serve as mcp_serve
-            mcp_serve(transport=args.transport)
-            return 0
+            if args.mcp_cmd == "serve":
+                from .mcp.server import serve as mcp_serve
+                mcp_serve(transport=args.transport)
+                return 0
+            if args.mcp_cmd == "install":
+                from .mcp.install import run_install
+                config_path = Path(args.config).expanduser().resolve() if args.config else None
+                return run_install(config_path=config_path, name=args.name, force=args.force)
     except KeyboardInterrupt:
         # Child process interrupted — exit with 130 (Ctrl+C convention) so
         # the parent home REPL can detect this as an interrupt and arm its
