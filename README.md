@@ -115,6 +115,62 @@ Sample `vbi live` frame:
 
 ![Color sample of vbi live terminal output](docs/assets/vbi-live-sample.svg)
 
+## MCP server (optional)
+
+vbi-cli can also run as an MCP server so LLM agents (Claude Code, Claude Desktop) can call its data layer directly without parsing CLI text.
+
+Install the optional `mcp` extra and register vbi with Claude Code:
+
+```powershell
+pip install "vbi-cli[mcp]"
+vbi mcp install              # auto-detects ~/.claude.json or claude_desktop_config.json
+```
+
+The wizard writes an entry pointing at the local `vbi.exe`:
+
+```json
+{
+  "mcpServers": {
+    "vbi": {
+      "command": "/abs/path/to/vbi.exe",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+Restart Claude Code, then ask something like *"what AI tooling is on this machine?"* — the LLM will discover and call the right vbi tool on its own.
+
+### Available tools
+
+| Tool | Purpose | Cost |
+| --- | --- | --- |
+| `status` | Cached provider records (no sync) | free |
+| `inventory` | Tier1 confirmed + tier2 heuristics | ~10s with `heuristics=True` |
+| `map_relationships` | Host-first map of apps, CLIs, MCPs | <1s |
+| `audit` | Release-safety findings | <1s |
+| `runtime_scan` | Duplicate MCP / Node / Python processes | 1-2s |
+| `live_snapshot` | One-shot live sync of every provider | 1-3s |
+| `export_report` | Sanitized full report | 1-2s |
+| `cleanup_plan` | Dry-run cleanup plan (safe) | 1-2s |
+| `cleanup_apply` | **Destructive** — terminate older duplicates | 1-2s |
+
+Plus one resource: `vbi://report/latest` — same payload as `export_report` for clients that prefer attaching reports by URI.
+
+### Safety on `cleanup_apply`
+
+`cleanup_apply` is the only destructive tool. Three layers protect against accidents:
+
+1. `confirm=True` is required. Default refuses with a hint to call `cleanup_plan` first.
+2. A file lock at `~/.vbi/cleanup.lock` prevents concurrent applies from racing.
+3. `groups` accepts fnmatch globs so you can target only safe signatures (e.g. `mcp:*` to spare long-running Node helpers).
+
+Recommended LLM workflow: **always call `cleanup_plan` first**, summarize for the user, then call `cleanup_apply` with the same `groups` filter and `confirm=True` only after the user assents.
+
+### Token cost note
+
+Connecting vbi as MCP adds ~2 KB of tool schemas to every Claude session's system prompt — small but not free. For one-off tasks where you already know which `vbi` command you want, the CLI is faster, free, and produces zero LLM context. MCP earns its keep when the LLM needs to chain calls (`runtime_scan` → `cleanup_plan` → `cleanup_apply`) or when you want vbi data inline with a broader conversation.
+
 ## Supported providers
 
 | Provider | What's shown | Trigger required |
