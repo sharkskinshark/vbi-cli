@@ -234,6 +234,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="stdio",
         help="MCP transport (only stdio supported in this release)",
     )
+    serve_parser.add_argument(
+        "--log-level",
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="MCP server log verbosity (default: WARNING — silences per-request INFO chatter)",
+    )
     install_parser = mcp_sub.add_parser(
         "install",
         help="register vbi as an MCP server with Claude Code (auto-detects config)",
@@ -371,7 +377,7 @@ def main() -> int:
         if args.command == "mcp":
             if args.mcp_cmd == "serve":
                 from .mcp.server import serve as mcp_serve
-                mcp_serve(transport=args.transport)
+                mcp_serve(transport=args.transport, log_level=args.log_level)
                 return 0
             if args.mcp_cmd == "install":
                 from .mcp.install import run_install
