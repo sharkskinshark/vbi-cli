@@ -330,7 +330,14 @@ def build_server() -> Any:
     return mcp
 
 
-def serve(transport: str = "stdio") -> None:
-    """Run the MCP server on the chosen transport (default: stdio)."""
+def serve(transport: str = "stdio", log_level: str = "WARNING") -> None:
+    """Run the MCP server on the chosen transport (default: stdio).
+
+    Suppresses FastMCP's INFO-level "Processing request" logs by default
+    so noisy diagnostic chatter doesn't pollute the stderr stream. Pass
+    ``log_level='INFO'`` (or 'DEBUG') to surface them when troubleshooting.
+    """
+    import logging
+    logging.getLogger("mcp").setLevel(getattr(logging, log_level.upper(), logging.WARNING))
     mcp = build_server()
     mcp.run(transport=transport)
