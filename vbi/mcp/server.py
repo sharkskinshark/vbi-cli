@@ -7,9 +7,12 @@ contract as ``vbi status`` on the CLI side.
 
 from __future__ import annotations
 
+import os
+import time
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from ..audit import has_critical, run_audit
 from ..export_cmd import build_export_report, sanitize_report
@@ -17,7 +20,59 @@ from ..inventory import fetch_cached_status, run_inventory
 from ..live import collect_live_records
 from ..map_cmd import build_map_relationships
 from ..registry import get_adapters
-from ..runtime_cmd import scan_runtime_processes
+from ..runtime_cmd import (
+    build_cleanup_plan,
+    filter_plan_by_groups,
+    scan_runtime_processes,
+    terminate_pid,
+)
+
+
+_STALE_LOCK_AGE_SECONDS = 600  # 10 min — well beyond any legitimate cleanup run
+
+
+@contextmanager
+def _cleanup_lock() -> Iterator[Path]:
+    """Atomic file lock at ~/.vbi/cleanup.lock so two concurrent
+    cleanup_apply calls can't race on the same PIDs. Stale locks (older
+    than 10 minutes) are reclaimed automatically — anything legitimate
+    finishes well under that.
+    """
+    lock_path = Path.home() / ".vbi" / "cleanup.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if lock_path.exists():
+        age = time.time() - lock_path.stat().st_mtime
+        if age > _STALE_LOCK_AGE_SECONDS:
+            lock_path.unlink(missing_ok=True)
+
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        raise RuntimeError(
+            f"cleanup lock held: {lock_path}. Another vbi cleanup may be in "
+            f"progress. Wait or delete the file manually if stale."
+        ) from exc
+
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        yield lock_path
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def _serialize_plan(plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert a build_cleanup_plan() result (with RuntimeProcess objects)
+    into a JSON-serializable shape for MCP tool returns."""
+    return [
+        {
+            "signature": entry["signature"],
+            "keep": asdict(entry["keep"]),
+            "kill": [asdict(p) for p in entry["kill"]],
+        }
+        for entry in plan
+    ]
 
 
 def build_server() -> Any:
@@ -185,6 +240,92 @@ def build_server() -> Any:
         client-side when reasoning across multiple steps.
         """
         return [asdict(p) for p in scan_runtime_processes()]
+
+    @mcp.tool()
+    def cleanup_plan(groups: str | None = None) -> dict[str, Any]:
+        """Compute the cleanup plan WITHOUT killing any process (dry-run).
+
+        Mirrors ``vbi cleanup`` (no --apply). For each duplicate group,
+        the plan keeps the newest process (by start time, ties broken
+        by highest PID) and lists the older PIDs that *would* be
+        terminated by ``cleanup_apply``.
+
+        Optional ``groups``: comma-separated fnmatch globs to filter
+        signatures (e.g. ``mcp:*`` to only target MCP duplicates and
+        spare long-running node helpers).
+        """
+        plan = build_cleanup_plan(scan_runtime_processes())
+        plan = filter_plan_by_groups(plan, groups)
+        return {
+            "filter": groups,
+            "groups": _serialize_plan(plan),
+            "kill_count": sum(len(e["kill"]) for e in plan),
+            "keep_count": len(plan),
+        }
+
+    @mcp.tool()
+    def cleanup_apply(
+        confirm: bool = False,
+        groups: str | None = None,
+    ) -> dict[str, Any]:
+        """DESTRUCTIVE: terminate older duplicate runtime processes.
+
+        Mirrors ``vbi cleanup --apply``. For each duplicate group, keeps
+        the newest process and stops the rest with the platform's kill
+        primitive (``taskkill /F`` on Windows, ``SIGTERM`` on POSIX).
+
+        Safety:
+          - ``confirm=True`` is REQUIRED. The default of False refuses
+            to run and returns a hint, so an LLM cannot kill processes
+            by accident on the first call.
+          - A file lock at ``~/.vbi/cleanup.lock`` prevents two
+            concurrent cleanup_apply calls from racing.
+          - Use ``cleanup_plan`` first to preview what would be killed.
+
+        Optional ``groups``: same fnmatch glob filter as cleanup_plan
+        (e.g. ``mcp:*`` to spare ``node:*`` helpers).
+        """
+        if not confirm:
+            return {
+                "applied": False,
+                "reason": "confirm=False — refusing destructive action",
+                "hint": (
+                    "Call cleanup_plan first to preview, then re-call "
+                    "cleanup_apply with confirm=True."
+                ),
+            }
+
+        try:
+            with _cleanup_lock():
+                plan = build_cleanup_plan(scan_runtime_processes())
+                plan = filter_plan_by_groups(plan, groups)
+
+                results: list[dict[str, Any]] = []
+                for entry in plan:
+                    for victim in entry["kill"]:
+                        ok, msg = terminate_pid(victim.pid)
+                        results.append({
+                            "pid": victim.pid,
+                            "name": victim.name,
+                            "signature": entry["signature"],
+                            "stopped": ok,
+                            "message": msg,
+                        })
+
+                stopped = sum(1 for r in results if r["stopped"])
+                failed = sum(1 for r in results if not r["stopped"])
+                return {
+                    "applied": True,
+                    "filter": groups,
+                    "stopped": stopped,
+                    "failed": failed,
+                    "results": results,
+                }
+        except RuntimeError as exc:
+            return {
+                "applied": False,
+                "reason": str(exc),
+            }
 
     return mcp
 

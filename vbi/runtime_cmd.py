@@ -73,7 +73,7 @@ def run_cleanup(
     groups: str | None = None,
 ) -> int:
     processes = scan_runtime_processes()
-    full_plan = _build_cleanup_plan(processes)
+    full_plan = build_cleanup_plan(processes)
 
     if not apply:
         print("VBI cleanup dry-run")
@@ -93,7 +93,7 @@ def run_cleanup(
         print("No duplicate runtime processes to stop.")
         return 0
 
-    plan = _filter_plan_by_groups(full_plan, groups)
+    plan = filter_plan_by_groups(full_plan, groups)
     if not plan:
         print(f"No duplicate groups matched filter: {groups!r}")
         print("")
@@ -114,7 +114,7 @@ def run_cleanup(
     failed = 0
     for entry in plan:
         for victim in entry["kill"]:
-            ok, msg = _terminate_pid(victim.pid)
+            ok, msg = terminate_pid(victim.pid)
             tag = "✓" if ok else "✗"
             suffix = f" — {msg}" if msg else ""
             print(f"  {tag} pid {victim.pid:<6} {victim.name}{suffix}")
@@ -155,6 +155,7 @@ $rows | ConvertTo-Json -Depth 3
         proc = subprocess.run(
             [shell, "-NoLogo", "-NoProfile", "-Command", script],
             text=True,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=15,
@@ -185,6 +186,7 @@ Get-Process |
         proc = subprocess.run(
             [shell, "-NoLogo", "-NoProfile", "-Command", script],
             text=True,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=10,
@@ -202,6 +204,7 @@ def _scan_posix_processes() -> list[dict[str, Any]]:
         proc = subprocess.run(
             [ps, "-axo", "pid=,comm=,etime=,time=,args="],
             text=True,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=10,
@@ -399,7 +402,7 @@ def _started_sort_key(proc: RuntimeProcess) -> tuple:
         return (1, -proc.pid)
 
 
-def _build_cleanup_plan(processes: list[RuntimeProcess]) -> list[dict[str, Any]]:
+def build_cleanup_plan(processes: list[RuntimeProcess]) -> list[dict[str, Any]]:
     by_sig: dict[str, list[RuntimeProcess]] = {}
     for proc in processes:
         by_sig.setdefault(proc.signature, []).append(proc)
@@ -442,7 +445,7 @@ def _render_cleanup_plan(plan: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _filter_plan_by_groups(
+def filter_plan_by_groups(
     plan: list[dict[str, Any]],
     groups: str | None,
 ) -> list[dict[str, Any]]:
@@ -465,13 +468,14 @@ def _render_signature_list(plan: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _terminate_pid(pid: int) -> tuple[bool, str]:
+def terminate_pid(pid: int) -> tuple[bool, str]:
     if pid <= 0 or pid == os.getpid():
         return False, "skipped self/invalid pid"
     try:
         if os.name == "nt":
             res = subprocess.run(
                 ["taskkill", "/F", "/PID", str(pid)],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
