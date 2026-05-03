@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from ..inventory import fetch_cached_status, run_inventory
 from ..registry import get_adapters
 
 
@@ -49,6 +50,33 @@ def build_server() -> Any:
                 row["status"] = record.blocked_reason or "ok"
                 rows.append(row)
         return rows
+
+    @mcp.tool()
+    def inventory(
+        with_status: bool = False,
+        heuristics: bool = False,
+    ) -> dict[str, Any]:
+        """Discover installed AI tooling on the local machine.
+
+        Equivalent to ``vbi inventory``. Returns a single structured
+        object with tier1 (confirmed registry hits), tier2 (heuristic
+        matches when ``heuristics=True``), and an optional ``status``
+        map (cached usage records keyed by record_id when
+        ``with_status=True``).
+
+        Read-only, no network, no credentials.
+        """
+        tier1, tier2 = run_inventory(include_heuristics=heuristics)
+        result: dict[str, Any] = {
+            "tier1": [asdict(r) for r in tier1],
+            "tier2": [asdict(r) for r in tier2] if heuristics else [],
+        }
+        if with_status:
+            status_map = fetch_cached_status(tier1)
+            result["status"] = {
+                record_id: asdict(rec) for record_id, rec in status_map.items()
+            }
+        return result
 
     return mcp
 
