@@ -8,9 +8,12 @@ contract as ``vbi status`` on the CLI side.
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
+from ..audit import has_critical, run_audit
 from ..inventory import fetch_cached_status, run_inventory
+from ..map_cmd import build_map_relationships
 from ..registry import get_adapters
 from ..runtime_cmd import scan_runtime_processes
 
@@ -78,6 +81,52 @@ def build_server() -> Any:
                 record_id: asdict(rec) for record_id, rec in status_map.items()
             }
         return result
+
+    @mcp.tool()
+    def map_relationships() -> dict[str, Any]:
+        """Host-first map of detected AI tooling and their MCP servers.
+
+        Equivalent to ``vbi map``. Returns a single object with five
+        keys: apps, clis (lists of inventory records), extensions_by_host,
+        mcp_servers_by_host (dicts keyed by host id), and
+        cloud_hosted_mcp (claude.ai-side MCP server names).
+
+        Read-only, scans local config files. Does not call inventory's
+        heuristics path.
+        """
+        apps, clis, by_ext_host, mcp_by_host, cloud = build_map_relationships()
+        return {
+            "apps": [asdict(r) for r in apps],
+            "clis": [asdict(r) for r in clis],
+            "extensions_by_host": {
+                host: [asdict(r) for r in records]
+                for host, records in by_ext_host.items()
+            },
+            "mcp_servers_by_host": {
+                host: sorted(servers) for host, servers in mcp_by_host.items()
+            },
+            "cloud_hosted_mcp": cloud,
+        }
+
+    @mcp.tool()
+    def audit() -> dict[str, Any]:
+        """Run vbi's GitHub release safety audit on the installed package.
+
+        Equivalent to ``vbi audit``. Returns the list of Finding records
+        plus a summary (counts by severity, has_critical flag). Empty
+        findings list means PASS.
+        """
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        findings = run_audit(repo_root)
+        by_severity: dict[str, int] = {}
+        for f in findings:
+            by_severity[f.severity] = by_severity.get(f.severity, 0) + 1
+        return {
+            "findings": [asdict(f) for f in findings],
+            "count": len(findings),
+            "by_severity": by_severity,
+            "has_critical": has_critical(findings),
+        }
 
     @mcp.tool()
     def runtime_scan() -> list[dict[str, Any]]:

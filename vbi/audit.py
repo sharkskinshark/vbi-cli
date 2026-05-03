@@ -186,6 +186,7 @@ def _git_output(root: Path, args: list[str]) -> tuple[int, str, str]:
             text=True,
             encoding="utf-8",
             errors="replace",
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=30,
             check=False,

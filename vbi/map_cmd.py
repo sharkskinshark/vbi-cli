@@ -92,7 +92,7 @@ def _kept(records: list[InventoryRecord]) -> list[InventoryRecord]:
     return [r for r in records if r.inventory_status in ("confirmed", "configured", "found")]
 
 
-def _build_relationships() -> tuple[
+def build_map_relationships() -> tuple[
     list[InventoryRecord],
     list[InventoryRecord],
     dict[str, list[InventoryRecord]],
@@ -125,7 +125,7 @@ def _build_relationships() -> tuple[
 
 def render_tree() -> None:
     """Render host-first hierarchy as a colored tree directly to stdout."""
-    apps, clis, by_ext_host, mcp_by_host, cloud_hosted = _build_relationships()
+    apps, clis, by_ext_host, mcp_by_host, cloud_hosted = build_map_relationships()
 
     console = Console()
     root = Tree("[bold]VBI[/bold]  [dim]local AI tooling map[/dim]")
@@ -182,7 +182,7 @@ def render_tree() -> None:
 
 def render_mermaid() -> str:
     """Render host-first hierarchy as Mermaid graph TD text."""
-    apps, clis, by_ext_host, mcp_by_host, cloud_hosted = _build_relationships()
+    apps, clis, by_ext_host, mcp_by_host, cloud_hosted = build_map_relationships()
 
     out: list[str] = ["graph TD"]
     out.append("")
@@ -310,7 +310,7 @@ def run_map(mermaid: bool = False, html: bool = False, output: str | None = None
             # Render tree to a string by capturing the rich console
             from rich.console import Console
             buf = Console(record=True, force_terminal=False, width=120)
-            apps, clis, by_ext_host, mcp_by_host, cloud_hosted = _build_relationships()
+            apps, clis, by_ext_host, mcp_by_host, cloud_hosted = build_map_relationships()
             tree_root = Tree("VBI  local AI tooling map")
             file_name_by_id = {r.record_id: r.display_name for r in apps + clis}
             if apps:

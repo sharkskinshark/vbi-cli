@@ -93,6 +93,21 @@ async def main() -> int:
                 print(f"     · pid={row.get('pid')} kind={row.get('kind')} "
                       f"signature={row.get('signature', '?')[:60]}")
 
+            map_call = await session.call_tool("map_relationships", {})
+            map_obj = _decode_single_object(map_call.content)
+            print(f"[ok] tools/call map_relationships — "
+                  f"apps={len(map_obj.get('apps', []))} "
+                  f"clis={len(map_obj.get('clis', []))} "
+                  f"mcp_hosts={list(map_obj.get('mcp_servers_by_host', {}).keys())} "
+                  f"cloud={len(map_obj.get('cloud_hosted_mcp', []))}")
+
+            audit_call = await session.call_tool("audit", {})
+            audit_obj = _decode_single_object(audit_call.content)
+            print(f"[ok] tools/call audit — "
+                  f"count={audit_obj.get('count')} "
+                  f"critical={audit_obj.get('has_critical')} "
+                  f"by_severity={audit_obj.get('by_severity')}")
+
     print("\n[done] vbi MCP stdio handshake working end-to-end.")
     return 0
 
