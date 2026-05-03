@@ -82,6 +82,17 @@ async def main() -> int:
                   f"tier2={len(inv_full_obj['tier2'])} "
                   f"status={len(inv_full_obj.get('status', {}))}")
 
+            rt_call = await session.call_tool("runtime_scan", {})
+            rt_rows = _decode_blocks(rt_call.content)
+            kinds: dict[str, int] = {}
+            for row in rt_rows:
+                kinds[row.get("kind", "?")] = kinds.get(row.get("kind", "?"), 0) + 1
+            print(f"[ok] tools/call runtime_scan — {len(rt_rows)} process(es) "
+                  f"by kind: {kinds}")
+            for row in rt_rows[:2]:
+                print(f"     · pid={row.get('pid')} kind={row.get('kind')} "
+                      f"signature={row.get('signature', '?')[:60]}")
+
     print("\n[done] vbi MCP stdio handshake working end-to-end.")
     return 0
 
