@@ -219,6 +219,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="write to a file instead of stdout",
     )
 
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="run vbi as an MCP server for LLM clients (Claude Code, Claude Desktop)",
+    )
+    mcp_sub = mcp_parser.add_subparsers(dest="mcp_cmd", required=True)
+    serve_parser = mcp_sub.add_parser(
+        "serve",
+        help="start the vbi MCP server (default transport: stdio)",
+    )
+    serve_parser.add_argument(
+        "--transport",
+        choices=["stdio"],
+        default="stdio",
+        help="MCP transport (only stdio supported in this release)",
+    )
+
     return parser
 
 
@@ -333,6 +349,10 @@ def main() -> int:
             return run_export(output=args.output)
         if args.command == "update":
             return run_update(check_only=args.check)
+        if args.command == "mcp":
+            from .mcp.server import serve as mcp_serve
+            mcp_serve(transport=args.transport)
+            return 0
     except KeyboardInterrupt:
         # Child process interrupted — exit with 130 (Ctrl+C convention) so
         # the parent home REPL can detect this as an interrupt and arm its
