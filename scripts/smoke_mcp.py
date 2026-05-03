@@ -108,6 +108,15 @@ async def main() -> int:
                   f"critical={audit_obj.get('has_critical')} "
                   f"by_severity={audit_obj.get('by_severity')}")
 
+            live_call = await session.call_tool("live_snapshot", {})
+            live_rows = _decode_blocks(live_call.content)
+            print(f"[ok] tools/call live_snapshot — {len(live_rows)} provider(s)")
+            for row in live_rows[:3]:
+                usage = row.get('usage_value')
+                limit = row.get('quota_limit')
+                usage_str = f"{usage}/{limit}" if usage is not None else "—"
+                print(f"     · {row.get('record_id', '?'):20s}  {usage_str}")
+
     print("\n[done] vbi MCP stdio handshake working end-to-end.")
     return 0
 

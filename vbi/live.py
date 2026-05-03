@@ -233,7 +233,7 @@ def _render_block(record: NormalizedRecord, now: datetime) -> list[str]:
 
 # ── sync + render frame ───────────────────────────────────────────────────────
 
-def _sync_live_adapters() -> list[NormalizedRecord]:
+def collect_live_records() -> list[NormalizedRecord]:
     records: list[NormalizedRecord] = []
     for adapter in get_adapters():
         if getattr(adapter, "adapter_tier", "live") != "live":
@@ -292,7 +292,7 @@ def run_live(interval: int, once: bool) -> int:
         return 0
 
     def _tick() -> None:
-        records = _sync_live_adapters()
+        records = collect_live_records()
         frame = _render_frame(records)
         os.system("cls" if os.name == "nt" else "clear")
         sys.stdout.write(frame + "\n")

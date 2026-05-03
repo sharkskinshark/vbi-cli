@@ -13,6 +13,7 @@ from typing import Any
 
 from ..audit import has_critical, run_audit
 from ..inventory import fetch_cached_status, run_inventory
+from ..live import collect_live_records
 from ..map_cmd import build_map_relationships
 from ..registry import get_adapters
 from ..runtime_cmd import scan_runtime_processes
@@ -127,6 +128,21 @@ def build_server() -> Any:
             "by_severity": by_severity,
             "has_critical": has_critical(findings),
         }
+
+    @mcp.tool()
+    def live_snapshot() -> list[dict[str, Any]]:
+        """One-shot live usage snapshot from every live-tier provider.
+
+        Equivalent to ``vbi live --once`` but data-only — no rendering,
+        no redraw loop. Each entry is a freshly synced NormalizedRecord
+        for one provider that has live telemetry (Antigravity, Claude
+        Code, Codex CLI, Gemini CLI, OpenCode).
+
+        Cost: 1-3s wall time depending on provider. Each adapter reads
+        local files; no network calls. Use ``status`` instead if cached
+        data is good enough — that's free.
+        """
+        return [asdict(rec) for rec in collect_live_records()]
 
     @mcp.tool()
     def runtime_scan() -> list[dict[str, Any]]:
