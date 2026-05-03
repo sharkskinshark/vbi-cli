@@ -132,6 +132,26 @@ async def main() -> int:
             res_text = res_read.contents[0].text if res_read.contents else ""
             print(f"[ok] resources/read vbi://report/latest — {len(res_text)} chars")
 
+            plan_call = await session.call_tool("cleanup_plan", {"groups": "mcp:*"})
+            plan_obj = _decode_single_object(plan_call.content)
+            print(f"[ok] tools/call cleanup_plan(groups='mcp:*') — "
+                  f"groups={plan_obj.get('keep_count')} kills={plan_obj.get('kill_count')}")
+
+            refuse_call = await session.call_tool("cleanup_apply", {})
+            refuse_obj = _decode_single_object(refuse_call.content)
+            print(f"[ok] tools/call cleanup_apply (no confirm) — "
+                  f"applied={refuse_obj.get('applied')} "
+                  f"reason={refuse_obj.get('reason', '')[:60]}")
+
+            safe_call = await session.call_tool(
+                "cleanup_apply", {"confirm": True, "groups": "nope:*"}
+            )
+            safe_obj = _decode_single_object(safe_call.content)
+            print(f"[ok] tools/call cleanup_apply(confirm=True, groups='nope:*') — "
+                  f"applied={safe_obj.get('applied')} "
+                  f"stopped={safe_obj.get('stopped')} "
+                  f"failed={safe_obj.get('failed')}")
+
     print("\n[done] vbi MCP stdio handshake working end-to-end.")
     return 0
 
