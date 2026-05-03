@@ -12,6 +12,7 @@ from typing import Any
 
 from ..inventory import fetch_cached_status, run_inventory
 from ..registry import get_adapters
+from ..runtime_cmd import scan_runtime_processes
 
 
 def build_server() -> Any:
@@ -77,6 +78,21 @@ def build_server() -> Any:
                 record_id: asdict(rec) for record_id, rec in status_map.items()
             }
         return result
+
+    @mcp.tool()
+    def runtime_scan() -> list[dict[str, Any]]:
+        """Scan local MCP / Node / Python runtime processes.
+
+        Equivalent to ``vbi doctor runtime``. Each entry is a frozen
+        ``RuntimeProcess`` dataclass serialized as a dict: pid, name,
+        command, started_at, cpu_seconds, kind ('mcp'|'node'|'python'),
+        and signature (used to identify duplicate groups).
+
+        Cost: ~1-2s on Windows (spawns PowerShell to query
+        Win32_Process). Avoid calling on every turn; cache results
+        client-side when reasoning across multiple steps.
+        """
+        return [asdict(p) for p in scan_runtime_processes()]
 
     return mcp
 
