@@ -117,6 +117,21 @@ async def main() -> int:
                 usage_str = f"{usage}/{limit}" if usage is not None else "—"
                 print(f"     · {row.get('record_id', '?'):20s}  {usage_str}")
 
+            export_call = await session.call_tool("export_report", {})
+            export_obj = _decode_single_object(export_call.content)
+            print(f"[ok] tools/call export_report — schema={export_obj.get('schema_version')} "
+                  f"vbi={export_obj.get('vbi_version')} "
+                  f"tier1={len(export_obj.get('inventory', {}).get('tier1', []))} "
+                  f"providers={len(export_obj.get('providers', {}))} "
+                  f"audit={len(export_obj.get('audit', []))}")
+
+            resources = await session.list_resources()
+            uris = [str(r.uri) for r in resources.resources]
+            print(f"[ok] resources/list — {uris}")
+            res_read = await session.read_resource("vbi://report/latest")
+            res_text = res_read.contents[0].text if res_read.contents else ""
+            print(f"[ok] resources/read vbi://report/latest — {len(res_text)} chars")
+
     print("\n[done] vbi MCP stdio handshake working end-to-end.")
     return 0
 

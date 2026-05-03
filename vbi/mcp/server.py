@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..audit import has_critical, run_audit
+from ..export_cmd import build_export_report, sanitize_report
 from ..inventory import fetch_cached_status, run_inventory
 from ..live import collect_live_records
 from ..map_cmd import build_map_relationships
@@ -143,6 +144,32 @@ def build_server() -> Any:
         data is good enough — that's free.
         """
         return [asdict(rec) for rec in collect_live_records()]
+
+    @mcp.tool()
+    def export_report() -> dict[str, Any]:
+        """Sanitized inventory + cached usage + audit findings, one object.
+
+        Equivalent to ``vbi export`` but returned in-band instead of
+        written to disk. Paths under the user's home are sanitized to
+        ``~/...`` so the report is safe to share. Same JSON schema as
+        the on-disk report.
+
+        Same content is also exposed as a static MCP resource at
+        ``vbi://report/latest`` — agents can use either based on their
+        client's UX (tool call vs. resource fetch).
+        """
+        return sanitize_report(build_export_report())
+
+    @mcp.resource("vbi://report/latest")
+    def export_report_resource() -> str:
+        """Full sanitized vbi report as a resource.
+
+        Same payload as the export_report tool, but served as a static
+        resource for clients that prefer the resource-oriented UX
+        (e.g. attaching it to a conversation by URI).
+        """
+        import json
+        return json.dumps(sanitize_report(build_export_report()), indent=2)
 
     @mcp.tool()
     def runtime_scan() -> list[dict[str, Any]]:

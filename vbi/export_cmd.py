@@ -37,16 +37,16 @@ _USER_DIR_PATTERN = re.compile(
 )
 
 
-def _sanitize(obj: Any) -> Any:
+def sanitize_report(obj: Any) -> Any:
     """Recursively replace user-home paths in any string value with ``~``."""
     if isinstance(obj, str):
         if _HOME_DIR and _HOME_DIR in obj:
             obj = obj.replace(_HOME_DIR, "~")
         return _USER_DIR_PATTERN.sub("~", obj)
     if isinstance(obj, dict):
-        return {k: _sanitize(v) for k, v in obj.items()}
+        return {k: sanitize_report(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [_sanitize(x) for x in obj]
+        return [sanitize_report(x) for x in obj]
     return obj
 
 
@@ -58,7 +58,7 @@ def _vbi_version() -> str:
         return "0.0.0"
 
 
-def _build_report() -> dict[str, Any]:
+def build_export_report() -> dict[str, Any]:
     tier1, tier2 = run_inventory(include_heuristics=True)
     status_map = fetch_cached_status(tier1)
 
@@ -88,7 +88,7 @@ def _build_report() -> dict[str, Any]:
 
 
 def run_export(output: str | None = None) -> int:
-    report = _sanitize(_build_report())
+    report = sanitize_report(build_export_report())
 
     if output:
         path = Path(output).expanduser().resolve()
